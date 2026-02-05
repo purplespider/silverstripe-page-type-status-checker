@@ -47,14 +47,9 @@ vendor/bin/sake tasks:page-type-tester
 
 The CLI output shows a simplified list of all page types with their CMS and frontend URLs.
 
-## Screenshots
+## Screenshot
 
-The browser interface includes:
-- **Check All Links** - Primary button to check all status codes
-- **Open All CMS / Frontend** - Open all links in new tabs
-- **Show Previews** - Toggle thumbnail previews of each page
-- **Randomise Pages** - Select random pages instead of first of each type
-- **Summary** - Shows pass/fail count after checking
+![Silverstripe Page Type Tester](docs/screenshot.png)
 
 ## License
 
