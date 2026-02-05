@@ -1,0 +1,30 @@
+{
+    "name": "purplespider/silverstripe-page-type-tester",
+    "description": "A Silverstripe BuildTask that tests page types by checking HTTP status codes for CMS and frontend links",
+    "type": "silverstripe-vendormodule",
+    "keywords": [
+        "silverstripe",
+        "testing",
+        "page-types",
+        "build-task",
+        "upgrade"
+    ],
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Purple Spider",
+            "homepage": "https://purplespider.com"
+        }
+    ],
+    "require": {
+        "silverstripe/framework": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PurpleSpider\\PageTypeTester\\": "src/"
+        }
+    },
+    "extra": {
+        "expose": []
+    }
+}
