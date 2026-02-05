@@ -2,6 +2,8 @@
 
 A Silverstripe BuildTask that provides a visual interface for testing all page types in your site. Useful for verifying pages work correctly after upgrades or major changes.
 
+![Silverstripe Page Type Tester](docs/screenshot.png)
+
 ## Features
 
 - Lists all page types with CMS edit and frontend links
@@ -46,10 +48,6 @@ vendor/bin/sake tasks:page-type-tester
 ```
 
 The CLI output shows a simplified list of all page types with their CMS and frontend URLs.
-
-## Screenshot
-
-![Silverstripe Page Type Tester](docs/screenshot.png)
 
 ## License
 
