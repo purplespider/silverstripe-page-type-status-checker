@@ -115,6 +115,11 @@ class PageTypeTesterTask extends BuildTask
 
     public function run(InputInterface $input, PolyOutput $output): int
     {
+        // Handle AJAX page creation request before any output
+        if (isset($_GET['createPage']) && !empty($_GET['createPage'])) {
+            return $this->handleCreatePage($_GET['createPage'], $output);
+        }
+
         $output->writeForAnsi("<options=bold>{$this->getTitle()}</>", true);
         $output->writeForHtml("<div class='ptl-header'><div><h1>{$this->getTitle()}</h1><p class='ptl-desc'>Checks the HTTP status code of the frontend and CMS edit form for each page type.</p></div><span id='ptl-summary'></span></div>", false);
         return $this->execute($input, $output);
@@ -187,6 +192,7 @@ class PageTypeTesterTask extends BuildTask
         // Build rows and link arrays
         $rows = [];
         foreach ($rowData as $data) {
+            $class = $data['class'];
             $shortClass = $data['shortClass'];
             $page = $data['page'];
             $liveCount = $data['liveCount'];
@@ -195,18 +201,33 @@ class PageTypeTesterTask extends BuildTask
 
             if ($page) {
                 $cmsLink = Controller::join_links($baseURL, 'admin/pages/edit/show', $page->ID);
-                $frontendLink = $page->AbsoluteLink();
+
+                // RedirectorPage's AbsoluteLink returns the destination, so build URL manually
+                if ($shortClass === 'RedirectorPage') {
+                    $parent = $page->Parent();
+                    $parentLink = $parent && $parent->exists() ? $parent->AbsoluteLink() : $baseURL;
+                    $frontendLink = Controller::join_links($parentLink, $page->URLSegment);
+                } else {
+                    $frontendLink = $page->AbsoluteLink();
+                }
 
                 $cmsLinks[] = $cmsLink;
                 $frontendLinks[] = $frontendLink;
 
-                // ErrorPage is expected to return 404 or 500
-                $expectedStatus = ($shortClass === 'ErrorPage') ? [404, 500] : [200];
+                // ErrorPage is expected to return 404 or 500, RedirectorPage returns 301/302
+                if ($shortClass === 'ErrorPage') {
+                    $expectedStatus = [404, 500];
+                } elseif ($shortClass === 'RedirectorPage') {
+                    $expectedStatus = [301, 302, 303, 307, 308];
+                } else {
+                    $expectedStatus = [200];
+                }
                 $expectedStatuses[] = $expectedStatus;
                 $rowAllowedActions[] = $allowedActions;
 
                 $rowIndex = count($cmsLinks) - 1;
-                $pageUrl = $page->Link();
+                // Use relative URL from frontendLink for display
+                $pageUrl = '/' . ltrim(str_replace(rtrim($baseURL, '/'), '', $frontendLink), '/');
 
                 // Placeholder for action links - will be populated by JavaScript when checking actions
                 $actionsLinksHtml = '';
@@ -220,7 +241,7 @@ class PageTypeTesterTask extends BuildTask
                     . "<td><span class='ptl-count'>{$liveCount}" . (($totalCount - $liveCount) > 0 ? " <span class='ptl-count-draft'>+ " . ($totalCount - $liveCount) . "</span>" : "") . "<span class='ptl-count-tooltip'>Live pages + Draft-only pages</span></span></td>"
                     . "<td><span id='cms-status-{$rowIndex}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><a href='{$cmsLink}' target='_blank' class='ptl-cms'>Edit in CMS</a></td>"
                     . "<td><span id='frontend-status-{$rowIndex}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><a href='{$frontendLink}' target='_blank' class='ptl-frontend'>View Page</a><span id='form-indicator-{$rowIndex}'></span>{$actionsLinksHtml}</td>"
-                    . "<td><span class='ptl-title'>{$page->Title}</span><span class='ptl-url'>{$pageUrl}</span></td>"
+                    . "<td class='ptl-example-cell'><span class='ptl-title'>{$page->Title}</span><span class='ptl-url'>{$pageUrl}</span></td>"
                     . "</tr>";
 
                 // CLI output: check URLs and show status
@@ -310,11 +331,13 @@ class PageTypeTesterTask extends BuildTask
                     $actionsNote = "<div class='ptl-action-note'>Has actions: " . htmlspecialchars(implode(', ', $allowedActions)) . "</div>";
                 }
 
-                $rows[] = "<tr>"
+                $classNameJs = htmlspecialchars(str_replace('\\', '\\\\', $class), ENT_QUOTES);
+
+                $rows[] = "<tr id='row-empty-{$shortClass}'>"
                     . "<td class='ptl-preview-col'><div class='ptl-preview-empty'>No preview</div></td>"
                     . "<td><span class='ptl-type'>{$shortClass}</span></td>"
                     . "<td><span class='ptl-count'>0<span class='ptl-count-tooltip'>Live pages + Draft-only pages</span></span></td>"
-                    . "<td colspan='3' style='text-align:center;'><span class='ptl-empty'>—</span>{$actionsNote}</td>"
+                    . "<td colspan='3' style='text-align:center;'><button onclick=\"createPage('{$classNameJs}', '{$shortClass}')\" class='ptl-create-btn'><i class='fa-solid fa-plus'></i> Create {$shortClass}</button>{$actionsNote}</td>"
                     . "</tr>";
 
                 $output->writeForAnsi("<comment>{$shortClass}</comment> (0): no pages to check\n");
@@ -381,8 +404,9 @@ class PageTypeTesterTask extends BuildTask
             .ptl-table a.ptl-frontend { color: #0071bc; display: inline-block; font-weight: 600; margin-left: 5px; text-decoration: underline; }
             .ptl-table a.ptl-frontend:hover { color: #005a96; }
             .ptl-type { color: #212529; font-weight: 600; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; }
-            .ptl-title { color: #495057; font-size: 14px; font-weight: 500; }
+            .ptl-title { color: #495057; font-size: 14px; font-weight: 500; display: block; word-wrap: break-word; overflow-wrap: break-word; }
             .ptl-url { color: #adb5bd; font-size: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; display: block; margin-top: 4px; word-break: break-all; }
+            .ptl-example-cell { max-width: 300px; }
             .ptl-status { display: inline-block; margin-right: 4px; text-align: center; }
             .ptl-status-placeholder { padding: 3px 6px; border-radius: 4px; background: #e9ecef; color: #adb5bd; font-size: 12px; font-weight: 500; display: inline-block; min-width: 46px; text-align: center; box-sizing: border-box; }
             .ptl-status-badge { padding: 3px 6px; border-radius: 4px; font-size: 12px; font-weight: 500; display: inline-block; min-width: 46px; text-align: center; cursor: pointer; box-sizing: border-box; }
@@ -392,6 +416,10 @@ class PageTypeTesterTask extends BuildTask
             .ptl-count-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #343a40; }
             .ptl-count:hover .ptl-count-tooltip { display: block; }
             .ptl-empty { color: #6c757d; font-style: italic; }
+            .ptl-create-btn { display: inline-block; padding: 6px 12px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; color: #495057; font-size: 13px; text-decoration: none; transition: all 0.2s; cursor: pointer; font-family: inherit; }
+            .ptl-create-btn:hover { background: #e9ecef; border-color: #adb5bd; color: #212529; }
+            .ptl-create-btn:disabled { cursor: wait; opacity: 0.8; }
+            .ptl-create-btn i { margin-right: 4px; }
             .ptl-preview { width: 200px; height: 150px; overflow: hidden; border-radius: 4px; border: 1px solid #dee2e6; background: #fff; position: relative; }
             .ptl-preview iframe { width: 1200px; height: 900px; transform: scale(0.167); transform-origin: top left; border: none; pointer-events: none; }
             .ptl-preview-empty { width: 200px; height: 150px; background: #e9ecef; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #adb5bd; font-size: 12px; }
@@ -414,7 +442,7 @@ class PageTypeTesterTask extends BuildTask
             .ptl-form-indicator .ptl-form-tooltip { display: none; position: absolute; left: 50%; transform: translateX(-50%); bottom: 100%; margin-bottom: 8px; background: #343a40; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: normal; white-space: nowrap; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
             .ptl-form-indicator .ptl-form-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #343a40; }
             .ptl-form-indicator:hover .ptl-form-tooltip { display: block; }
-            .ptl-check-badge { padding: 3px 8px; border-radius: 4px; background: #fff3cd; color: #856404; font-size: 12px; font-weight: 500; cursor: help; position: relative; display: inline-block; }
+            .ptl-check-badge { padding: 3px 8px; border-radius: 4px; background: #fff3cd; color: #856404; font-size: 12px; font-weight: 500; cursor: help; position: relative; display: inline-block; white-space: nowrap; }
             .ptl-check-tooltip { display: none; position: absolute; left: 50%; transform: translateX(-50%); bottom: 100%; margin-bottom: 8px; background: #343a40; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: normal; white-space: nowrap; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
             .ptl-check-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #343a40; }
             .ptl-check-badge:hover .ptl-check-tooltip { display: block; }
@@ -524,6 +552,128 @@ function openAll(links) {
     links.forEach(function(url) { window.open(url, '_blank'); });
 }
 
+var checksHaveRun = false;
+var checksIncludedActions = false;
+
+async function createPage(className, shortName) {
+    var btn = event.target.closest('button');
+    var row = btn.closest('tr');
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class=\"fa-solid fa-spinner fa-spin\"></i> Creating...';
+
+    try {
+        var response = await fetch(window.location.pathname + '?createPage=' + encodeURIComponent(className), {
+            method: 'GET',
+            credentials: 'include'
+        });
+        var result = await response.json();
+
+        if (result.success) {
+            // Add to link arrays
+            var rowIndex = cmsLinks.length;
+            cmsLinks.push(result.editLink);
+            frontendLinks.push(result.frontendLink);
+            expectedStatuses.push(result.expectedStatus);
+            rowAllowedActions.push(result.allowedActions);
+
+            // Build actions container HTML
+            var actionsHtml = '';
+            if (result.allowedActions && result.allowedActions.length > 0) {
+                actionsHtml = \"<span id='actions-container-\" + rowIndex + \"' class='ptl-actions-container'></span>\";
+            }
+
+            // Replace row content with full page details
+            row.id = '';
+            row.innerHTML = '<td class=\"ptl-preview-col\"><div class=\"ptl-preview\"><iframe data-src=\"' + result.frontendLink + '\"></iframe></div></td>' +
+                '<td><span class=\"ptl-type\">' + shortName + '</span></td>' +
+                '<td><span class=\"ptl-count\">0 <span class=\"ptl-count-draft\">+ 1</span><span class=\"ptl-count-tooltip\">Live pages + Draft-only pages</span></span></td>' +
+                '<td><span id=\"cms-status-' + rowIndex + '\" class=\"ptl-status\"><span class=\"ptl-status-placeholder\">?</span></span><a href=\"' + result.editLink + '\" target=\"_blank\" class=\"ptl-cms\">Edit in CMS</a></td>' +
+                '<td><span id=\"frontend-status-' + rowIndex + '\" class=\"ptl-status\"><span class=\"ptl-status-placeholder\">?</span></span><a href=\"' + result.frontendLink + '\" target=\"_blank\" class=\"ptl-frontend\">View Page</a><span id=\"form-indicator-' + rowIndex + '\"></span>' + actionsHtml + '</td>' +
+                '<td class=\"ptl-example-cell\"><span class=\"ptl-title\">' + result.title + '</span><span class=\"ptl-url\">' + result.pageUrl + '</span></td>';
+
+            // Auto-run checks if checks have been run
+            if (checksHaveRun) {
+                await checkNewRow(rowIndex, checksIncludedActions);
+            }
+        } else {
+            btn.innerHTML = '<i class=\"fa-solid fa-xmark\"></i> ' + (result.error || 'Failed');
+            btn.style.background = '#f8d7da';
+            btn.style.borderColor = '#dc3545';
+            btn.style.color = '#721c24';
+            setTimeout(function() {
+                btn.innerHTML = originalHtml;
+                btn.style.background = '';
+                btn.style.borderColor = '';
+                btn.style.color = '';
+                btn.disabled = false;
+            }, 3000);
+        }
+    } catch (e) {
+        btn.innerHTML = '<i class=\"fa-solid fa-xmark\"></i> Error';
+        btn.style.background = '#f8d7da';
+        btn.style.borderColor = '#dc3545';
+        btn.style.color = '#721c24';
+        setTimeout(function() {
+            btn.innerHTML = originalHtml;
+            btn.style.background = '';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+            btn.disabled = false;
+        }, 3000);
+    }
+}
+
+async function checkNewRow(rowIndex, includeActions) {
+    var cmsSpan = document.getElementById('cms-status-' + rowIndex);
+    var frontendSpan = document.getElementById('frontend-status-' + rowIndex);
+    var actions = rowAllowedActions[rowIndex] || [];
+
+    // Check CMS link
+    if (cmsSpan) {
+        cmsSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+        var cmsResult = await checkLink(cmsLinks[rowIndex]);
+        cmsSpan.innerHTML = statusBadge(cmsResult, [200], 'cms', rowIndex);
+    }
+
+    // Check frontend link
+    if (frontendSpan) {
+        frontendSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+        var frontendResult = await checkLink(frontendLinks[rowIndex], true);
+        frontendSpan.innerHTML = statusBadge(frontendResult, expectedStatuses[rowIndex], 'frontend', rowIndex);
+
+        // Detect forms
+        var formIndicator = document.getElementById('form-indicator-' + rowIndex);
+        if (formIndicator && frontendResult.html) {
+            var formCount = detectForms(frontendResult.html);
+            if (formCount > 0) {
+                formIndicator.innerHTML = '<span class=\"ptl-form-badge\"><i class=\"fa-solid fa-file-lines\"></i> form<span class=\"ptl-form-badge-tooltip\">A form was detected on this page. Check it manually to ensure it works correctly.</span></span>';
+            }
+        }
+
+        // Check actions if enabled
+        if (includeActions && actions.length > 0 && frontendResult.html) {
+            var foundLinks = findActionLinks(frontendResult.html, actions, frontendLinks[rowIndex]);
+            foundActionLinks[rowIndex] = foundLinks;
+            renderActionLinks(rowIndex, actions, foundLinks);
+
+            for (var a = 0; a < actions.length; a++) {
+                var action = actions[a];
+                if (foundLinks[action]) {
+                    await checkActionLink(rowIndex, action, foundLinks[action]);
+                }
+            }
+        } else if (actions.length > 0) {
+            // Show action buttons for manual check
+            var container = document.getElementById('actions-container-' + rowIndex);
+            if (container) {
+                var btnText = actions.length === 1 ? '<span class=\"action-name\">' + actions[0] + '</span>' : actions.length + ' actions';
+                container.innerHTML = '<span class=\"ptl-actions-warning\"><button onclick=\"checkRowActions(' + rowIndex + ')\" class=\"ptl-btn-actions\">' + btnText + '<span class=\"ptl-actions-tooltip\"><em>Click to detect and test:</em><br><strong>' + actions.join('</strong>, <strong>') + '</strong></span></button></span>';
+            }
+        }
+    }
+}
+
 function randomisePages() {
     var url = new URL(window.location.href);
     url.searchParams.set('randomise', '1');
@@ -558,9 +708,14 @@ function togglePreviews() {
 
 async function checkLink(url, getHtml = false) {
     try {
-        const response = await fetch(url, { method: 'GET', credentials: 'include' });
-        var result = { status: response.status, ok: response.ok };
-        if (getHtml) {
+        const response = await fetch(url, { method: 'GET', credentials: 'include', redirect: 'manual' });
+        // Handle opaque redirect (status 0 with type opaqueredirect)
+        var status = response.status;
+        if (response.type === 'opaqueredirect' || (status === 0 && response.type !== 'error')) {
+            status = 302; // Treat as redirect
+        }
+        var result = { status: status, ok: response.ok || status === 302 };
+        if (getHtml && response.status === 200) {
             result.html = await response.text();
         }
         return result;
@@ -647,10 +802,9 @@ async function checkActionLink(rowIndex, action, url) {
 
     var result = await checkLink(url);
     var isExpected = result.status === 200;
-    var color = isExpected ? '#28a745' : '#dc3545';
-    var bgColor = isExpected ? '#d4edda' : '#f8d7da';
+    var bgColor = isExpected ? '#28a745' : '#dc3545';
     var icon = isExpected ? ' <i class=\"fa-solid fa-check\"></i>' : ' <i class=\"fa-solid fa-xmark\"></i>';
-    span.innerHTML = '<span class=\"ptl-status-badge\" style=\"background:' + bgColor + ';color:' + color + ';border:1px solid ' + color + ';\" title=\"Click to recheck\">' + result.status + icon + '</span>';
+    span.innerHTML = '<span class=\"ptl-status-badge\" style=\"background:' + bgColor + ';color:#fff;\" title=\"Click to recheck\">' + result.status + icon + '</span>';
     return { passed: isExpected };
 }
 
@@ -692,21 +846,18 @@ async function checkRowActions(rowIndex) {
 
 function statusBadge(result, expectedStatuses, type, index) {
     var isExpected = expectedStatuses.indexOf(result.status) !== -1;
-    var color, textColor, icon;
+    var bgColor, icon;
     if (isExpected) {
-        color = '#28a745';
-        textColor = '#fff';
+        bgColor = '#28a745';
         icon = ' <i class=\"fa-solid fa-check\"></i>';
     } else if (result.status >= 300 && result.status < 400) {
-        color = '#ffc107';
-        textColor = '#000';
+        bgColor = '#ffc107';
         icon = ' <i class=\"fa-solid fa-xmark\"></i>';
     } else {
-        color = '#dc3545';
-        textColor = '#fff';
+        bgColor = '#dc3545';
         icon = ' <i class=\"fa-solid fa-xmark\"></i>';
     }
-    return '<span onclick=\"recheckLink(\\'' + type + '\\', ' + index + ')\" class=\"ptl-status-badge\" style=\"background:' + color + ';color:' + textColor + ';\" title=\"Click to recheck\">' + result.status + icon + '</span>';
+    return '<span onclick=\"recheckLink(\\'' + type + '\\', ' + index + ')\" class=\"ptl-status-badge\" style=\"background:' + bgColor + ';color:#fff;\" title=\"Click to recheck\">' + result.status + icon + '</span>';
 }
 
 async function recheckLink(type, index) {
@@ -869,6 +1020,9 @@ async function checkAllLinks(includeActions) {
     var totalFailed = failed + actionsFailed;
     var totalManual = actionsNotFound;
 
+    checksHaveRun = true;
+    checksIncludedActions = includeActions;
+
     if (stopChecking) {
         summary.style.background = '#fff3cd';
         var msg = '<i class=\"fa-solid fa-triangle-exclamation\"></i> Stopped: ' + totalFailed + ' failed, ' + totalPassed + ' passed';
@@ -891,6 +1045,68 @@ async function checkAllLinks(includeActions) {
 }
 
 </script>");
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Handle AJAX request to create a new page of a given type
+     */
+    protected function handleCreatePage(string $className, PolyOutput $output): int
+    {
+        header('Content-Type: application/json');
+
+        // Validate the class exists and is a page type
+        if (!class_exists($className) || !is_subclass_of($className, Page::class)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid page type']);
+            exit;
+        }
+
+        try {
+            $shortName = ClassInfo::shortName($className);
+            $page = $className::create();
+            $page->Title = 'New ' . $shortName;
+            $page->write();
+
+            $baseURL = Director::absoluteBaseURL();
+            $frontendLink = $page->AbsoluteLink();
+            $pageUrl = '/' . ltrim(str_replace(rtrim($baseURL, '/'), '', $frontendLink), '/');
+
+            // Check for allowed_actions on the controller
+            $controllerClass = $className . 'Controller';
+            $allowedActions = [];
+            if (class_exists($controllerClass)) {
+                $actions = Config::inst()->get($controllerClass, 'allowed_actions', Config::UNINHERITED);
+                if ($actions && is_array($actions)) {
+                    foreach ($actions as $key => $value) {
+                        $allowedActions[] = is_int($key) ? $value : $key;
+                    }
+                }
+            }
+
+            // Determine expected status
+            $expectedStatus = [200];
+            if ($shortName === 'ErrorPage') {
+                $expectedStatus = [404, 500];
+            } elseif ($shortName === 'RedirectorPage') {
+                $expectedStatus = [301, 302, 303, 307, 308];
+            }
+
+            echo json_encode([
+                'success' => true,
+                'id' => $page->ID,
+                'title' => $page->Title,
+                'editLink' => Controller::join_links($baseURL, 'admin/pages/edit/show', $page->ID),
+                'frontendLink' => $frontendLink,
+                'pageUrl' => $pageUrl,
+                'allowedActions' => $allowedActions,
+                'expectedStatus' => $expectedStatus,
+            ]);
+            exit;
+        } catch (\Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
 
         return Command::SUCCESS;
     }
