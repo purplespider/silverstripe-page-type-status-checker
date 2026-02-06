@@ -19,7 +19,7 @@ class PageTypeTesterTask extends BuildTask
 {
     protected static string $commandName = 'page-type-tester';
 
-    protected string $title = 'Silverstripe Page Type Tester';
+    protected string $title = 'Silverstripe Page Type Status Checker';
 
     protected static string $description = 'Lists CMS edit and frontend links for each page type - useful for testing after upgrades';
 
@@ -365,7 +365,8 @@ class PageTypeTesterTask extends BuildTask
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background: #f5f7fa; min-height: 100vh; }
             .ptl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #e9ecef; }
             h1 { color: #212529; font-weight: 600; font-size: 22px; margin: 0 0 8px 0; }
-            #ptl-summary { font-size: 18px; font-weight: 600; padding: 8px 16px; border-radius: 6px; background: #f8f9fa; white-space: nowrap; }
+            #ptl-summary { font-size: 18px; font-weight: 600; padding: 8px 16px; border-radius: 6px; background: #f8f9fa; white-space: nowrap; position: fixed; top: 20px; right: 20px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+            #ptl-summary:empty { display: none; }
             p.ptl-desc { color: #6c757d; margin: 0; font-size: 13px; background: none !important; }
             .ptl-wrap { overflow-x: auto; }
             .ptl-toolbar { margin-bottom: 20px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; position: relative; z-index: 10; }
@@ -554,6 +555,24 @@ function openAll(links) {
 
 var checksHaveRun = false;
 var checksIncludedActions = false;
+var summaryPassed = 0;
+var summaryFailed = 0;
+var summaryManual = 0;
+
+function updateSummary() {
+    var summary = document.getElementById('ptl-summary');
+    if (summaryFailed === 0) {
+        summary.style.background = '#d4edda';
+        var msg = '✓ ' + summaryPassed + ' passed';
+        if (summaryManual > 0) msg += ', ' + summaryManual + ' manual';
+        summary.innerHTML = '<span style=\"color:#155724;\">' + msg + '</span>';
+    } else {
+        summary.style.background = '#f8d7da';
+        var msg = '✗ ' + summaryFailed + ' failed, ' + summaryPassed + ' passed';
+        if (summaryManual > 0) msg += ', ' + summaryManual + ' manual';
+        summary.innerHTML = '<span style=\"color:#721c24;\">' + msg + '</span>';
+    }
+}
 
 async function createPage(className, shortName) {
     var btn = event.target.closest('button');
@@ -634,6 +653,7 @@ async function checkNewRow(rowIndex, includeActions) {
         cmsSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
         var cmsResult = await checkLink(cmsLinks[rowIndex]);
         cmsSpan.innerHTML = statusBadge(cmsResult, [200], 'cms', rowIndex);
+        if (cmsResult.status === 200) { summaryPassed++; } else { summaryFailed++; }
     }
 
     // Check frontend link
@@ -641,6 +661,7 @@ async function checkNewRow(rowIndex, includeActions) {
         frontendSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
         var frontendResult = await checkLink(frontendLinks[rowIndex], true);
         frontendSpan.innerHTML = statusBadge(frontendResult, expectedStatuses[rowIndex], 'frontend', rowIndex);
+        if (expectedStatuses[rowIndex].indexOf(frontendResult.status) !== -1) { summaryPassed++; } else { summaryFailed++; }
 
         // Detect forms
         var formIndicator = document.getElementById('form-indicator-' + rowIndex);
@@ -660,7 +681,10 @@ async function checkNewRow(rowIndex, includeActions) {
             for (var a = 0; a < actions.length; a++) {
                 var action = actions[a];
                 if (foundLinks[action]) {
-                    await checkActionLink(rowIndex, action, foundLinks[action]);
+                    var actionResult = await checkActionLink(rowIndex, action, foundLinks[action]);
+                    if (actionResult.passed) { summaryPassed++; } else { summaryFailed++; }
+                } else {
+                    summaryManual++;
                 }
             }
         } else if (actions.length > 0) {
@@ -672,6 +696,8 @@ async function checkNewRow(rowIndex, includeActions) {
             }
         }
     }
+
+    updateSummary();
 }
 
 function randomisePages() {
@@ -905,7 +931,7 @@ async function checkAllLinks(includeActions) {
     var inactiveBtn = includeActions ? btn : actionsBtn;
     inactiveBtn.disabled = true;
     activeBtn.classList.add('ptl-checking');
-    summary.innerHTML = '';
+    summary.innerHTML = '<span style=\"color:#6c757d;\"><i class=\"fa-solid fa-spinner fa-spin\"></i> Checking...</span>';
     summary.style.background = '#f8f9fa';
 
     // Clear action containers and show warnings if not checking actions
@@ -1022,6 +1048,9 @@ async function checkAllLinks(includeActions) {
 
     checksHaveRun = true;
     checksIncludedActions = includeActions;
+    summaryPassed = totalPassed;
+    summaryFailed = totalFailed;
+    summaryManual = totalManual;
 
     if (stopChecking) {
         summary.style.background = '#fff3cd';
