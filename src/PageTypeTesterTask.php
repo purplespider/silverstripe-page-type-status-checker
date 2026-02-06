@@ -19,7 +19,7 @@ class PageTypeTesterTask extends BuildTask
 {
     protected static string $commandName = 'check-page-type-statuses';
 
-    protected string $title = 'Silverstripe Page Type Status Checker';
+    protected string $title = 'Check Page Type Statuses';
 
     protected static string $description = 'Lists CMS edit and frontend links for each page type - useful for testing after upgrades';
 
