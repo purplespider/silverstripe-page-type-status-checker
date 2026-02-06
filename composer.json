@@ -1,6 +1,6 @@
 {
-    "name": "purplespider/silverstripe-page-type-tester",
-    "description": "A Silverstripe BuildTask that tests page types by checking HTTP status codes for CMS and frontend links",
+    "name": "purplespider/silverstripe-page-type-status-checker",
+    "description": "A Silverstripe BuildTask that checks page type status by verifying HTTP status codes for CMS and frontend links",
     "type": "silverstripe-vendormodule",
     "keywords": [
         "silverstripe",
