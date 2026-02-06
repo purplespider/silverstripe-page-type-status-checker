@@ -1073,6 +1073,11 @@ async function checkAllLinks(includeActions) {
     }
 }
 
+// Auto-start checks when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    checkAllLinks(true);
+});
+
 </script>");
 
         return Command::SUCCESS;
