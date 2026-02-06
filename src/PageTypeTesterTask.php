@@ -13,6 +13,7 @@ use SilverStripe\PolyExecution\PolyOutput;
 use SilverStripe\Versioned\Versioned;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 
 class PageTypeTesterTask extends BuildTask
 {
@@ -21,6 +22,96 @@ class PageTypeTesterTask extends BuildTask
     protected string $title = 'Silverstripe Page Type Tester';
 
     protected static string $description = 'Lists CMS edit and frontend links for each page type - useful for testing after upgrades';
+
+    public function getOptions(): array
+    {
+        return [
+            new InputOption('skip-actions', null, InputOption::VALUE_NONE, 'Skip checking allowed_actions URLs'),
+        ];
+    }
+
+    /**
+     * Perform an HTTP GET request and return the status code.
+     * Returns the HTTP status code as an integer, or 0 on connection failure.
+     */
+    private function checkUrl(string $url): int
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_NOBODY => false,
+            CURLOPT_USERAGENT => 'SilverStripe-PageTypeTester/1.0',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_COOKIEJAR => '',
+            CURLOPT_COOKIEFILE => '',
+        ]);
+        curl_exec($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return $statusCode;
+    }
+
+    /**
+     * Fetch a URL and return both the status code and the response body.
+     */
+    private function fetchUrl(string $url): array
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_USERAGENT => 'SilverStripe-PageTypeTester/1.0',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_COOKIEJAR => '',
+            CURLOPT_COOKIEFILE => '',
+        ]);
+        $body = curl_exec($ch);
+        $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return ['status' => $statusCode, 'body' => $body ?: ''];
+    }
+
+    /**
+     * Find action URLs in HTML by looking for hrefs that match the action names.
+     */
+    private function findActionLinksInHtml(string $html, array $actions, string $frontendUrl, string $baseURL): array
+    {
+        $found = [];
+        preg_match_all('/href=["\']([^"\']+)["\']/i', $html, $matches);
+        $links = $matches[1] ?? [];
+
+        $directActions = ['rss', 'index'];
+
+        foreach ($actions as $action) {
+            $pattern = '#/' . preg_quote($action, '#') . '(/|\?|$)#i';
+            foreach ($links as $link) {
+                if (preg_match($pattern, $link)) {
+                    if (!str_starts_with($link, 'http')) {
+                        if (str_starts_with($link, '/')) {
+                            $link = rtrim($baseURL, '/') . $link;
+                        } else {
+                            $link = rtrim($frontendUrl, '/') . '/' . $link;
+                        }
+                    }
+                    $found[$action] = $link;
+                    break;
+                }
+            }
+            // If not found and it's a direct action, construct URL directly
+            if (!isset($found[$action]) && in_array(strtolower($action), $directActions)) {
+                $found[$action] = rtrim($frontendUrl, '/') . '/' . $action;
+            }
+        }
+
+        return $found;
+    }
 
     public function run(InputInterface $input, PolyOutput $output): int
     {
@@ -42,7 +133,13 @@ class PageTypeTesterTask extends BuildTask
         $rowAllowedActions = [];
         $rowData = [];
 
-        $output->writeForAnsi("\n<comment>For the best experience, run this task in your browser.</comment>\n\n");
+        $skipActions = (bool) $input->getOption('skip-actions');
+        $cliFailures = [];
+        $cliPassed = 0;
+        $cliFailed = 0;
+        $cliChecked = 0;
+
+        $output->writeForAnsi("\n<comment>Checking URLs" . ($skipActions ? ' (skipping actions)' : ' and actions') . "...</comment>\n\n");
 
         // Collect all page type data first
         foreach ($pageClasses as $class) {
@@ -126,10 +223,86 @@ class PageTypeTesterTask extends BuildTask
                     . "<td><span class='ptl-title'>{$page->Title}</span><span class='ptl-url'>{$pageUrl}</span></td>"
                     . "</tr>";
 
-                // CLI output
-                $cliActions = !empty($allowedActions) ? " [has allowed_actions: " . implode(', ', $allowedActions) . "]" : "";
+                // CLI output: check URLs and show status
                 $draftOnlyCount = $totalCount - $liveCount;
-                $output->writeForAnsi("<info>{$shortClass}</info> ({$liveCount} + {$draftOnlyCount}):{$cliActions}\n  Frontend: {$frontendLink}\n  CMS: {$cmsLink}\n");
+                $output->writeForAnsi("<info>{$shortClass}</info> ({$liveCount} + {$draftOnlyCount}):");
+
+                // Check frontend URL
+                $cliChecked++;
+                $frontendStatus = $this->checkUrl($frontendLink);
+                $frontendExpected = ($shortClass === 'ErrorPage') ? [404, 500] : [200];
+                $frontendOk = in_array($frontendStatus, $frontendExpected);
+                if ($frontendOk) {
+                    $cliPassed++;
+                    $output->writeForAnsi("\n  <fg=green>✓</> Frontend: {$frontendLink} [{$frontendStatus}]");
+                } else {
+                    $cliFailed++;
+                    $statusLabel = $frontendStatus ?: 'ERR';
+                    $output->writeForAnsi("\n  <fg=red>✗</> Frontend: {$frontendLink} [{$statusLabel}]");
+                    $cliFailures[] = [
+                        'type' => 'Frontend',
+                        'pageType' => $shortClass,
+                        'url' => $frontendLink,
+                        'status' => $statusLabel,
+                    ];
+                }
+
+                // Check CMS URL
+                $cliChecked++;
+                $cmsStatus = $this->checkUrl($cmsLink);
+                $cmsOk = $cmsStatus === 200;
+                if ($cmsOk) {
+                    $cliPassed++;
+                    $output->writeForAnsi("\n  <fg=green>✓</> CMS: {$cmsLink} [{$cmsStatus}]");
+                } else {
+                    $cliFailed++;
+                    $statusLabel = $cmsStatus ?: 'ERR';
+                    $output->writeForAnsi("\n  <fg=red>✗</> CMS: {$cmsLink} [{$statusLabel}]");
+                    $cliFailures[] = [
+                        'type' => 'CMS',
+                        'pageType' => $shortClass,
+                        'url' => $cmsLink,
+                        'status' => $statusLabel,
+                    ];
+                }
+
+                // Check allowed_actions URLs unless skipped
+                if (!$skipActions && !empty($allowedActions)) {
+                    // Fetch the frontend page HTML to find action links
+                    $pageResponse = $this->fetchUrl($frontendLink);
+                    if ($pageResponse['body']) {
+                        $actionLinks = $this->findActionLinksInHtml($pageResponse['body'], $allowedActions, $frontendLink, $baseURL);
+                        foreach ($allowedActions as $action) {
+                            if (isset($actionLinks[$action])) {
+                                $cliChecked++;
+                                $actionStatus = $this->checkUrl($actionLinks[$action]);
+                                $actionOk = $actionStatus === 200;
+                                if ($actionOk) {
+                                    $cliPassed++;
+                                    $output->writeForAnsi("\n  <fg=green>✓</> Action /{$action}: {$actionLinks[$action]} [{$actionStatus}]");
+                                } else {
+                                    $cliFailed++;
+                                    $statusLabel = $actionStatus ?: 'ERR';
+                                    $output->writeForAnsi("\n  <fg=red>✗</> Action /{$action}: {$actionLinks[$action]} [{$statusLabel}]");
+                                    $cliFailures[] = [
+                                        'type' => "Action /{$action}",
+                                        'pageType' => $shortClass,
+                                        'url' => $actionLinks[$action],
+                                        'status' => $statusLabel,
+                                    ];
+                                }
+                            } else {
+                                $output->writeForAnsi("\n  <fg=yellow>?</> Action /{$action}: <comment>not found on page</comment>");
+                            }
+                        }
+                    } else {
+                        $output->writeForAnsi("\n  <fg=yellow>?</> Actions: <comment>could not fetch page HTML to find action links</comment>");
+                    }
+                } elseif ($skipActions && !empty($allowedActions)) {
+                    $output->writeForAnsi("\n  <comment>Actions skipped: " . implode(', ', $allowedActions) . "</comment>");
+                }
+
+                $output->writeForAnsi("\n");
             } else {
                 // Build action links note for pages with no instances
                 $actionsNote = '';
@@ -144,10 +317,19 @@ class PageTypeTesterTask extends BuildTask
                     . "<td colspan='3' style='text-align:center;'><span class='ptl-empty'>—</span>{$actionsNote}</td>"
                     . "</tr>";
 
-                $cliActions = !empty($allowedActions) ? " [has allowed_actions: " . implode(', ', $allowedActions) . "]" : "";
-                $output->writeForAnsi("<comment>{$shortClass}</comment> (0):{$cliActions} (none)\n");
+                $output->writeForAnsi("<comment>{$shortClass}</comment> (0): no pages to check\n");
             }
         }
+
+        // CLI summary with grouped failures
+        if (!empty($cliFailures)) {
+            $output->writeForAnsi("\n<fg=red;options=bold>FAILED URLs ({$cliFailed}):</>\n");
+            foreach ($cliFailures as $failure) {
+                $output->writeForAnsi("  <fg=red>✗</> <options=bold>{$failure['pageType']}</> {$failure['type']}: {$failure['url']} <fg=red>[{$failure['status']}]</>\n");
+            }
+        }
+
+        $output->writeForAnsi("\n<options=bold>Results:</> <fg=green>{$cliPassed} passed</>, <fg=red>{$cliFailed} failed</> ({$cliChecked} checked)\n");
 
         // HTML output with Open All buttons
         $cmsLinksJson = json_encode($cmsLinks);
