@@ -30,14 +30,14 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 ## Installation
 
 ```bash
-composer require purplespider/silverstripe-page-type-tester
+composer require purplespider/silverstripe-page-type-status-checker
 ```
 
 ## Usage
 
 ### Browser (Recommended)
 
-Visit `/dev/tasks/page-type-tester` in your browser while logged in as admin.
+Visit `/dev/tasks/check-page-type-statuses` in your browser while logged in as admin.
 
 Click "Check Links & Actions" to check all links including controller actions, or "Check Links Only" for a faster check of just the main pages.
 
@@ -52,7 +52,7 @@ The task will display:
 ### CLI
 
 ```bash
-vendor/bin/sake tasks:page-type-tester
+vendor/bin/sake tasks:check-page-type-statuses
 ```
 
 The CLI output shows a simplified list of all page types with their CMS and frontend URLs.

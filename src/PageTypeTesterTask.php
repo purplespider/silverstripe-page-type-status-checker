@@ -17,7 +17,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 class PageTypeTesterTask extends BuildTask
 {
-    protected static string $commandName = 'page-type-tester';
+    protected static string $commandName = 'check-page-type-statuses';
 
     protected string $title = 'Silverstripe Page Type Status Checker';
 
