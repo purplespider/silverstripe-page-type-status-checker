@@ -27,6 +27,7 @@ class PageTypeTesterTask extends BuildTask
     {
         return [
             new InputOption('skip-actions', null, InputOption::VALUE_NONE, 'Skip checking allowed_actions URLs'),
+            new InputOption('live-domain', null, InputOption::VALUE_REQUIRED, 'Live site domain to add comparison links (e.g., https://example.com)'),
         ];
     }
 
@@ -139,6 +140,9 @@ class PageTypeTesterTask extends BuildTask
         $rowData = [];
 
         $skipActions = (bool) $input->getOption('skip-actions');
+        $liveDomain = $input->getOption('live-domain') ?? ($_GET['live-domain'] ?? '');
+        $liveDomain = rtrim($liveDomain, '/'); // Remove trailing slash if present
+
         $cliFailures = [];
         $cliPassed = 0;
         $cliFailed = 0;
@@ -235,12 +239,21 @@ class PageTypeTesterTask extends BuildTask
                     $actionsLinksHtml = "<span id='actions-container-{$rowIndex}' class='ptl-actions-container'></span>";
                 }
 
+                // Build live site links if live domain provided
+                $liveLinksHtml = '';
+                if ($liveDomain) {
+                    $liveCmsLink = $liveDomain . '/admin/pages/edit/show/' . $page->ID;
+                    $liveFrontendLink = $liveDomain . $pageUrl;
+                    $liveLinksHtml = "<td class='ptl-live-links'><a href='{$liveCmsLink}' target='_blank' class='ptl-live-cms'>Live CMS</a><a href='{$liveFrontendLink}' target='_blank' class='ptl-live-frontend'>Live Page</a></td>";
+                }
+
                 $rows[] = "<tr>"
                     . "<td class='ptl-preview-col'><div class='ptl-preview'><iframe data-src='{$frontendLink}'></iframe></div></td>"
                     . "<td><span class='ptl-type'>{$shortClass}</span></td>"
                     . "<td><span class='ptl-count'>{$liveCount}" . (($totalCount - $liveCount) > 0 ? " <span class='ptl-count-draft'>+ " . ($totalCount - $liveCount) . "</span>" : "") . "<span class='ptl-count-tooltip'>Live pages + Draft-only pages</span></span></td>"
                     . "<td><span id='cms-status-{$rowIndex}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><a href='{$cmsLink}' target='_blank' class='ptl-cms'>Edit in CMS</a></td>"
                     . "<td><span id='frontend-status-{$rowIndex}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><a href='{$frontendLink}' target='_blank' class='ptl-frontend'>View Page</a><span id='form-indicator-{$rowIndex}'></span>{$actionsLinksHtml}</td>"
+                    . $liveLinksHtml
                     . "<td class='ptl-example-cell'><span class='ptl-title'>{$page->Title}</span><span class='ptl-url'>{$pageUrl}</span></td>"
                     . "</tr>";
 
@@ -332,12 +345,13 @@ class PageTypeTesterTask extends BuildTask
                 }
 
                 $classNameJs = htmlspecialchars(str_replace('\\', '\\\\', $class), ENT_QUOTES);
+                $emptyColspan = $liveDomain ? '4' : '3';
 
                 $rows[] = "<tr id='row-empty-{$shortClass}'>"
                     . "<td class='ptl-preview-col'><div class='ptl-preview-empty'>No preview</div></td>"
                     . "<td><span class='ptl-type'>{$shortClass}</span></td>"
                     . "<td><span class='ptl-count'>0<span class='ptl-count-tooltip'>Live pages + Draft-only pages</span></span></td>"
-                    . "<td colspan='3' style='text-align:center;'><button onclick=\"createPage('{$classNameJs}', '{$shortClass}')\" class='ptl-create-btn'><i class='fa-solid fa-plus'></i> Create {$shortClass}</button>{$actionsNote}</td>"
+                    . "<td colspan='{$emptyColspan}' style='text-align:center;'><button onclick=\"createPage('{$classNameJs}', '{$shortClass}')\" class='ptl-create-btn'><i class='fa-solid fa-plus'></i> Create {$shortClass}</button>{$actionsNote}</td>"
                     . "</tr>";
 
                 $output->writeForAnsi("<comment>{$shortClass}</comment> (0): no pages to check\n");
@@ -386,6 +400,12 @@ class PageTypeTesterTask extends BuildTask
             .ptl-btn-secondary { background: linear-gradient(135deg, #5a9bd4, #4a8bc4); color: #fff; border: none; font-weight: 600; padding: 12px 20px; font-size: 14px; box-shadow: 0 2px 4px rgba(90,155,212,0.3); min-width: 150px; }
             .ptl-btn-secondary:hover { background: linear-gradient(135deg, #4a8bc4, #3a7bb4); box-shadow: 0 4px 8px rgba(90,155,212,0.4); }
             .ptl-btn-primary:disabled, .ptl-btn-secondary:disabled { background: #6c757d; box-shadow: none; cursor: wait; }
+            .ptl-live-domain-section { margin-top: 24px; padding: 20px 24px; background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%); border: 1px solid #dee2e6; border-radius: 8px; }
+            .ptl-live-domain-section h3 { margin: 0 0 8px 0; font-size: 14px; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+            .ptl-live-domain-section p { margin: 0 0 16px 0; font-size: 13px; color: #495057; line-height: 1.5; }
+            .ptl-live-domain-form { display: flex; gap: 8px; align-items: center; }
+            .ptl-input { padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; width: 280px; }
+            .ptl-input:focus { outline: none; border-color: #6f42c1; box-shadow: 0 0 0 2px rgba(111,66,193,0.2); }
             .ptl-btn-primary.ptl-checking, .ptl-btn-secondary.ptl-checking { cursor: pointer; }
             .ptl-btn-primary.ptl-checking:hover, .ptl-btn-secondary.ptl-checking:hover { background: linear-gradient(135deg, #dc3545, #c82333) !important; box-shadow: 0 2px 4px rgba(220,53,69,0.3); }
             .ptl-divider { width: 1px; height: 24px; background: #dee2e6; }
@@ -404,6 +424,10 @@ class PageTypeTesterTask extends BuildTask
             .ptl-table a.ptl-cms:hover { color: #495057; }
             .ptl-table a.ptl-frontend { color: #0071bc; display: inline-block; font-weight: 600; margin-left: 5px; text-decoration: underline; }
             .ptl-table a.ptl-frontend:hover { color: #005a96; }
+            .ptl-live-links { white-space: nowrap; }
+            .ptl-live-links a { display: inline-block; margin-right: 12px; color: #6f42c1; font-weight: 500; font-size: 13px; text-decoration: underline; }
+            .ptl-live-links a:hover { color: #59359a; }
+            .ptl-live-links a:last-child { margin-right: 0; }
             .ptl-type { color: #212529; font-weight: 600; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; }
             .ptl-title { color: #495057; font-size: 14px; font-weight: 500; display: block; word-wrap: break-word; overflow-wrap: break-word; }
             .ptl-url { color: #adb5bd; font-size: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; display: block; margin-top: 4px; word-break: break-all; }
@@ -509,11 +533,23 @@ class PageTypeTesterTask extends BuildTask
         $output->writeForHtml("</div>");
 
         $output->writeForHtml("<table class='ptl-table'>");
-        $output->writeForHtml("<tr><th class='ptl-preview-col'>Preview</th><th>Page Type</th><th>Count</th><th>CMS Edit Form</th><th>Frontend</th><th>Example Page</th></tr>");
+        $liveHeader = $liveDomain ? "<th>Live Site</th>" : "";
+        $output->writeForHtml("<tr><th class='ptl-preview-col'>Preview</th><th>Page Type</th><th>Count</th><th>CMS Edit Form</th><th>Frontend</th>{$liveHeader}<th>Example Page</th></tr>");
         foreach ($rows as $row) {
             $output->writeForHtml($row);
         }
         $output->writeForHtml("</table>");
+
+        // Live domain input section
+        $liveDomainValue = htmlspecialchars($liveDomain);
+        $output->writeForHtml("<div class='ptl-live-domain-section'>
+            <h3>Compare with Live Site</h3>
+            <p>Enter the live site URL to add \"Live CMS\" and \"Live Page\" links for each page type. Useful for comparing how CMS fields and pages look on the live site versus your local/staging environment after an upgrade. <strong>Note:</strong> Live site URLs are not checked – these are simply clickable links for manual comparison.</p>
+            <div class='ptl-live-domain-form'>
+                <input type='text' id='live-domain-input' class='ptl-input' placeholder='https://example.com' value='{$liveDomainValue}'>
+                <button onclick='setLiveDomain()' class='ptl-btn'><i class='fa-solid fa-globe'></i> Set Live Domain</button>" . ($liveDomain ? "<button onclick='clearLiveDomain()' class='ptl-btn'><i class='fa-solid fa-xmark'></i> Clear</button>" : "") . "
+            </div>
+        </div>");
 
         $output->writeForHtml("<div class='ptl-help'>
             <h3>How Does This Work?</h3>
@@ -709,6 +745,23 @@ function randomisePages() {
 function resetPages() {
     var url = new URL(window.location.href);
     url.searchParams.delete('randomise');
+    window.location.href = url.toString();
+}
+
+function setLiveDomain() {
+    var domain = document.getElementById('live-domain-input').value.trim();
+    var url = new URL(window.location.href);
+    if (domain) {
+        url.searchParams.set('live-domain', domain);
+    } else {
+        url.searchParams.delete('live-domain');
+    }
+    window.location.href = url.toString();
+}
+
+function clearLiveDomain() {
+    var url = new URL(window.location.href);
+    url.searchParams.delete('live-domain');
     window.location.href = url.toString();
 }
 

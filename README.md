@@ -1,4 +1,4 @@
-# Silverstripe Page Type Status Checker
+# Check Page Type Statuses
 
 A Silverstripe BuildTask that provides a visual interface for testing all page types in your site. Useful for verifying pages work correctly after upgrades or major changes.
 
