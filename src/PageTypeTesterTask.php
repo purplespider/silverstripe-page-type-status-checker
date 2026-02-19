@@ -5,6 +5,7 @@ namespace PurpleSpider\PageTypeTester;
 use Page;
 use SilverStripe\Dev\BuildTask;
 use SilverStripe\ORM\DataObject;
+use SilverStripe\Admin\ModelAdmin;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
 use SilverStripe\Core\ClassInfo;
@@ -27,6 +28,7 @@ class PageTypeTesterTask extends BuildTask
     {
         return [
             new InputOption('skip-actions', null, InputOption::VALUE_NONE, 'Skip checking allowed_actions URLs'),
+            new InputOption('skip-admin', null, InputOption::VALUE_NONE, 'Skip checking ModelAdmin sections and SiteConfig'),
             new InputOption('live-domain', null, InputOption::VALUE_REQUIRED, 'Live site domain to add comparison links (e.g., https://example.com)'),
         ];
     }
@@ -140,6 +142,7 @@ class PageTypeTesterTask extends BuildTask
         $rowData = [];
 
         $skipActions = (bool) $input->getOption('skip-actions');
+        $skipAdmin = (bool) ($input->getOption('skip-admin') || isset($_GET['skip-admin']));
         $liveDomain = $input->getOption('live-domain') ?? ($_GET['live-domain'] ?? '');
         $liveDomain = rtrim($liveDomain, '/'); // Remove trailing slash if present
 
@@ -358,6 +361,136 @@ class PageTypeTesterTask extends BuildTask
             }
         }
 
+        // Detect ModelAdmin sections and SiteConfig
+        $adminRows = [];
+        $adminLinks = [];
+        $adminEditLinks = [];
+        $adminEditIdx = 0;
+
+        if ($skipAdmin) {
+            $output->writeForAnsi("\n<comment>Skipping admin sections.</comment>\n");
+        }
+
+        if (!$skipAdmin) {
+            $modelAdminClasses = ClassInfo::subclassesFor(ModelAdmin::class);
+            foreach ($modelAdminClasses as $adminClass) {
+                if ($adminClass === ModelAdmin::class) continue;
+
+                $urlSegment = Config::inst()->get($adminClass, 'url_segment');
+                $menuTitle = Config::inst()->get($adminClass, 'menu_title');
+                if (!$urlSegment) continue;
+
+                $shortClass = ClassInfo::shortName($adminClass);
+                $adminUrl = Controller::join_links($baseURL, 'admin', $urlSegment);
+                $name = $menuTitle ?: $shortClass;
+
+                // Get managed models and find edit form URLs for each tab
+                $managedModels = Config::inst()->get($adminClass, 'managed_models');
+                $editLinks = [];
+
+                if ($managedModels && is_array($managedModels)) {
+                    foreach ($managedModels as $key => $value) {
+                        if (is_string($value)) {
+                            $tabKey = $value;
+                            $dataClass = $value;
+                        } elseif (is_array($value)) {
+                            if (isset($value['dataClass'])) {
+                                $tabKey = is_int($key) ? $value['dataClass'] : $key;
+                                $dataClass = $value['dataClass'];
+                            } else {
+                                $tabKey = $key;
+                                $dataClass = $key;
+                            }
+                        } else {
+                            continue;
+                        }
+
+                        if (!class_exists($dataClass)) continue;
+
+                        $record = DataObject::get($dataClass)->first();
+                        if (!$record) continue;
+
+                        $sanitisedTab = str_replace('\\', '-', $tabKey);
+                        $editUrl = Controller::join_links($baseURL, 'admin', $urlSegment, $sanitisedTab, 'EditForm/field', $sanitisedTab, 'item', $record->ID);
+
+                        $modelName = ClassInfo::shortName($dataClass);
+                        $editLinks[] = [
+                            'name' => $modelName,
+                            'url' => $editUrl,
+                            'recordTitle' => $record->getTitle(),
+                            'editIdx' => $adminEditIdx++,
+                        ];
+                        $adminEditLinks[] = $editUrl;
+                    }
+                }
+
+                $adminRows[] = [
+                    'name' => $name,
+                    'type' => 'ModelAdmin',
+                    'url' => $adminUrl,
+                    'editLinks' => $editLinks,
+                ];
+                $adminLinks[] = $adminUrl;
+            }
+
+            // Add SiteConfig settings
+            $settingsUrl = Controller::join_links($baseURL, 'admin/settings');
+            $adminRows[] = [
+                'name' => 'Settings',
+                'type' => 'Settings',
+                'url' => $settingsUrl,
+                'editLinks' => [],
+            ];
+            $adminLinks[] = $settingsUrl;
+
+            // CLI output for admin sections
+            $output->writeForAnsi("\n<comment>Checking admin sections...</comment>\n\n");
+            foreach ($adminRows as $adminRow) {
+                $output->writeForAnsi("<info>{$adminRow['name']}</info> ({$adminRow['type']}):");
+
+                $cliChecked++;
+                $adminStatus = $this->checkUrl($adminRow['url']);
+                if ($adminStatus === 200) {
+                    $cliPassed++;
+                    $output->writeForAnsi("\n  <fg=green>✓</> Section: {$adminRow['url']} [{$adminStatus}]");
+                } else {
+                    $cliFailed++;
+                    $statusLabel = $adminStatus ?: 'ERR';
+                    $output->writeForAnsi("\n  <fg=red>✗</> Section: {$adminRow['url']} [{$statusLabel}]");
+                    $cliFailures[] = [
+                        'type' => $adminRow['type'],
+                        'pageType' => $adminRow['name'],
+                        'url' => $adminRow['url'],
+                        'status' => $statusLabel,
+                    ];
+                }
+
+                foreach ($adminRow['editLinks'] as $editLink) {
+                    $cliChecked++;
+                    $editStatus = $this->checkUrl($editLink['url']);
+                    if ($editStatus === 200) {
+                        $cliPassed++;
+                        $output->writeForAnsi("\n  <fg=green>✓</> Edit {$editLink['name']}: {$editLink['url']} [{$editStatus}]");
+                    } else {
+                        $cliFailed++;
+                        $statusLabel = $editStatus ?: 'ERR';
+                        $output->writeForAnsi("\n  <fg=red>✗</> Edit {$editLink['name']}: {$editLink['url']} [{$statusLabel}]");
+                        $cliFailures[] = [
+                            'type' => 'Edit Form',
+                            'pageType' => $adminRow['name'] . ' / ' . $editLink['name'],
+                            'url' => $editLink['url'],
+                            'status' => $statusLabel,
+                        ];
+                    }
+                }
+
+                $output->writeForAnsi("\n");
+            }
+        }
+
+        $adminLinksJson = json_encode($adminLinks);
+        $adminEditLinksJson = json_encode($adminEditLinks);
+
         // CLI summary with grouped failures
         if (!empty($cliFailures)) {
             $output->writeForAnsi("\n<fg=red;options=bold>FAILED URLs ({$cliFailed}):</>\n");
@@ -431,6 +564,10 @@ class PageTypeTesterTask extends BuildTask
             .ptl-type { color: #212529; font-weight: 600; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; }
             .ptl-title { color: #495057; font-size: 14px; font-weight: 500; display: block; word-wrap: break-word; overflow-wrap: break-word; }
             .ptl-url { color: #adb5bd; font-size: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; display: block; margin-top: 4px; word-break: break-all; }
+            .ptl-edit-link { display: flex; align-items: center; gap: 6px; padding: 5px 0; }
+            .ptl-edit-link + .ptl-edit-link { border-top: 1px solid #f0f0f0; }
+            .ptl-edit-link a.ptl-cms { font-weight: 400; }
+            .ptl-edit-model { font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 11px; color: #6c757d; background: #e9ecef; padding: 2px 7px; border-radius: 3px; white-space: nowrap; font-weight: 600; }
             .ptl-example-cell { max-width: 300px; }
             .ptl-status { display: inline-block; margin-right: 4px; text-align: center; }
             .ptl-status-placeholder { padding: 3px 6px; border-radius: 4px; background: #e9ecef; color: #adb5bd; font-size: 12px; font-weight: 500; display: inline-block; min-width: 46px; text-align: center; box-sizing: border-box; }
@@ -540,6 +677,36 @@ class PageTypeTesterTask extends BuildTask
         }
         $output->writeForHtml("</table>");
 
+        // Admin sections HTML table
+        if (!$skipAdmin) {
+            $output->writeForHtml("<h2 style='margin: 30px 0 16px 0; font-size: 18px; font-weight: 600; color: #212529;'>Admin Sections</h2>");
+            $output->writeForHtml("<table class='ptl-table'>");
+            $output->writeForHtml("<tr><th>Name</th><th>Type</th><th>Admin Section</th><th>Edit Form</th></tr>");
+            foreach ($adminRows as $idx => $adminRow) {
+                $editFormHtml = '';
+                if (!empty($adminRow['editLinks'])) {
+                    $parts = [];
+                    foreach ($adminRow['editLinks'] as $editLink) {
+                        $editIdx = $editLink['editIdx'];
+                        $modelName = htmlspecialchars($editLink['name']);
+                        $recordTitle = htmlspecialchars($editLink['recordTitle']);
+                        $parts[] = "<div class='ptl-edit-link'><span id='admin-edit-status-{$editIdx}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><span class='ptl-edit-model'>{$modelName}</span><a href='{$editLink['url']}' target='_blank' class='ptl-cms'>{$recordTitle}</a></div>";
+                    }
+                    $editFormHtml = implode('', $parts);
+                } else {
+                    $editFormHtml = "<span style='color:#adb5bd;'>—</span>";
+                }
+
+                $output->writeForHtml("<tr>"
+                    . "<td><strong>{$adminRow['name']}</strong></td>"
+                    . "<td><span class='ptl-type'>{$adminRow['type']}</span></td>"
+                    . "<td><span id='admin-status-{$idx}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><a href='{$adminRow['url']}' target='_blank' class='ptl-cms'>View</a></td>"
+                    . "<td>{$editFormHtml}</td>"
+                    . "</tr>");
+            }
+            $output->writeForHtml("</table>");
+        }
+
         // Live domain input section
         $liveDomainValue = htmlspecialchars($liveDomain);
         $output->writeForHtml("<div class='ptl-live-domain-section'>
@@ -583,6 +750,8 @@ var frontendLinks = {$frontendLinksJson};
 var expectedStatuses = {$expectedStatusesJson};
 var rowAllowedActions = {$rowAllowedActionsJson};
 var baseURL = '{$baseURL}';
+var adminLinks = {$adminLinksJson};
+var adminEditLinks = {$adminEditLinksJson};
 var foundActionLinks = {};
 
 function openAll(links) {
@@ -956,6 +1125,46 @@ async function recheckLink(type, index) {
     span.innerHTML = statusBadge(result, expected, type, index);
 }
 
+function adminStatusBadge(result, index) {
+    var isExpected = result.status === 200;
+    var bgColor, icon;
+    if (isExpected) {
+        bgColor = '#28a745';
+        icon = ' <i class=\"fa-solid fa-check\"></i>';
+    } else {
+        bgColor = '#dc3545';
+        icon = ' <i class=\"fa-solid fa-xmark\"></i>';
+    }
+    return '<span onclick=\"recheckAdminLink(' + index + ')\" class=\"ptl-status-badge\" style=\"background:' + bgColor + ';color:#fff;\" title=\"Click to recheck\">' + result.status + icon + '</span>';
+}
+
+async function recheckAdminLink(index) {
+    var span = document.getElementById('admin-status-' + index);
+    span.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+    var result = await checkLink(adminLinks[index]);
+    span.innerHTML = adminStatusBadge(result, index);
+}
+
+function adminEditStatusBadge(result, index) {
+    var isExpected = result.status === 200;
+    var bgColor, icon;
+    if (isExpected) {
+        bgColor = '#28a745';
+        icon = ' <i class=\"fa-solid fa-check\"></i>';
+    } else {
+        bgColor = '#dc3545';
+        icon = ' <i class=\"fa-solid fa-xmark\"></i>';
+    }
+    return '<span onclick=\"recheckAdminEditLink(' + index + ')\" class=\"ptl-status-badge\" style=\"background:' + bgColor + ';color:#fff;\" title=\"Click to recheck\">' + result.status + icon + '</span>';
+}
+
+async function recheckAdminEditLink(index) {
+    var span = document.getElementById('admin-edit-status-' + index);
+    span.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+    var result = await checkLink(adminEditLinks[index]);
+    span.innerHTML = adminEditStatusBadge(result, index);
+}
+
 var isChecking = false;
 var stopChecking = false;
 var checkingText = '';
@@ -1009,7 +1218,7 @@ async function checkAllLinks(includeActions) {
     var actionsPassed = 0;
     var actionsFailed = 0;
     var actionsNotFound = 0;
-    var total = cmsLinks.length * 2;
+    var total = cmsLinks.length * 2 + adminLinks.length + adminEditLinks.length;
     var checked = 0;
 
     // First pass: count total including potential action links
@@ -1083,6 +1292,38 @@ async function checkAllLinks(includeActions) {
                     }
                 }
             }
+        }
+    }
+
+    // Check admin section links
+    for (var j = 0; j < adminLinks.length; j++) {
+        if (stopChecking) break;
+        var adminSpan = document.getElementById('admin-status-' + j);
+        if (adminSpan) {
+            checked++;
+            checkingText = '<i class=\"fa-solid fa-spinner fa-spin\"></i> Checking ' + checked + '/' + (total + actionCount) + '...';
+            if (!isHoveringCheck) activeBtn.innerHTML = checkingText;
+            adminSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+            var adminResult = await checkLink(adminLinks[j]);
+            if (stopChecking) { adminSpan.innerHTML = ''; break; }
+            adminSpan.innerHTML = adminStatusBadge(adminResult, j);
+            if (adminResult.status === 200) { passed++; } else { failed++; }
+        }
+    }
+
+    // Check admin edit form links
+    for (var k = 0; k < adminEditLinks.length; k++) {
+        if (stopChecking) break;
+        var editSpan = document.getElementById('admin-edit-status-' + k);
+        if (editSpan) {
+            checked++;
+            checkingText = '<i class=\"fa-solid fa-spinner fa-spin\"></i> Checking ' + checked + '/' + (total + actionCount) + '...';
+            if (!isHoveringCheck) activeBtn.innerHTML = checkingText;
+            editSpan.innerHTML = '<span class=\"ptl-status-placeholder\">...</span>';
+            var editResult = await checkLink(adminEditLinks[k]);
+            if (stopChecking) { editSpan.innerHTML = ''; break; }
+            editSpan.innerHTML = adminEditStatusBadge(editResult, k);
+            if (editResult.status === 200) { passed++; } else { failed++; }
         }
     }
 
