@@ -417,7 +417,7 @@ class PageTypeTesterTask extends BuildTask
                         $editLinks[] = [
                             'name' => $modelName,
                             'url' => $editUrl,
-                            'recordTitle' => $record->getTitle(),
+                            'recordTitle' => $record->getTitle() ?: '(untitled)',
                             'editIdx' => $adminEditIdx++,
                         ];
                         $adminEditLinks[] = $editUrl;
@@ -689,7 +689,7 @@ class PageTypeTesterTask extends BuildTask
                     foreach ($adminRow['editLinks'] as $editLink) {
                         $editIdx = $editLink['editIdx'];
                         $modelName = htmlspecialchars($editLink['name']);
-                        $recordTitle = htmlspecialchars($editLink['recordTitle']);
+                        $recordTitle = htmlspecialchars($editLink['recordTitle'] ?? '(untitled)');
                         $parts[] = "<div class='ptl-edit-link'><span id='admin-edit-status-{$editIdx}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span><span class='ptl-edit-model'>{$modelName}</span><a href='{$editLink['url']}' target='_blank' class='ptl-cms'>{$recordTitle}</a></div>";
                     }
                     $editFormHtml = implode('', $parts);
