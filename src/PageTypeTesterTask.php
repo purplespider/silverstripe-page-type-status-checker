@@ -10,19 +10,19 @@ use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
-use SilverStripe\PolyExecution\PolyOutput;
+use PurpleSpider\PageTypeTester\Compat\PolyOutput;
 use SilverStripe\Versioned\Versioned;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
+use PurpleSpider\PageTypeTester\Compat\Command;
+use PurpleSpider\PageTypeTester\Compat\TaskInput as InputInterface;
+use PurpleSpider\PageTypeTester\Compat\InputOption;
 
 class PageTypeTesterTask extends BuildTask
 {
-    protected static string $commandName = 'check-page-type-statuses';
+    private static $segment = 'check-page-type-statuses';
 
-    protected string $title = 'Check Page Type Statuses';
+    protected $title = 'Check Page Type Statuses';
 
-    protected static string $description = 'Lists CMS edit and frontend links for each page type - useful for testing after upgrades';
+    protected $description = 'Lists CMS edit and frontend links for each page type - useful for testing after upgrades';
 
     public function getOptions(): array
     {
@@ -116,8 +116,17 @@ class PageTypeTesterTask extends BuildTask
         return $found;
     }
 
-    public function run(InputInterface $input, PolyOutput $output): int
+    public function run($request)
     {
+        // CMS 5 hands BuildTasks an HTTPRequest rather than console input
+        // and has no PolyOutput, so build the compatibility objects here.
+        $output = new PolyOutput();
+        $input = InputInterface::fromRequest($request, [
+            'skip-actions' => true,
+            'skip-admin' => true,
+            'live-domain' => false,
+        ]);
+
         // Handle AJAX page creation request before any output
         if (isset($_GET['createPage']) && !empty($_GET['createPage'])) {
             return $this->handleCreatePage($_GET['createPage'], $output);

@@ -24,8 +24,13 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 
 ## Requirements
 
-- Silverstripe 6.0+
+- Silverstripe 5.x
 - PHP 8.1+
+
+> This is the **`ss5` branch**, for Silverstripe CMS 5. The `main` branch targets CMS 6.
+> CMS 5 has no `SilverStripe\PolyExecution\PolyOutput` and does not depend on
+> `symfony/console`, so this branch provides small stand-ins under `src/Compat/`.
+> The task body is otherwise identical to `main`.
 
 ## Installation
 
@@ -52,10 +57,27 @@ The task will display:
 ### CLI
 
 ```bash
-vendor/bin/sake tasks:check-page-type-statuses
+vendor/bin/sake dev/tasks/check-page-type-statuses
 ```
 
 The CLI output shows a simplified list of all page types with their CMS and frontend URLs.
+
+Options are passed as request vars, e.g.
+
+```bash
+vendor/bin/sake dev/tasks/check-page-type-statuses skip-actions=1 live-domain=https://example.com
+```
+
+### Do not trust CMS statuses from the CLI
+
+The status checks use curl with no session cookie and `CURLOPT_FOLLOWLOCATION`
+enabled. From the CLI an admin URL therefore redirects to the login page, which
+returns **200**, so **every CMS link reports a false pass** regardless of whether
+the edit form actually works.
+
+Run the task in the browser while logged in as an admin for a meaningful result:
+the in-page JavaScript re-checks each link using your authenticated session. The
+frontend column is trustworthy in both modes.
 
 ## License
 
