@@ -17,7 +17,13 @@
         }
     ],
     "require": {
-        "silverstripe/framework": "^6.0"
+        "php": "^8.1",
+        "silverstripe/framework": "^6.0",
+        "silverstripe/cms": "^6.0",
+        "silverstripe/admin": "^3.0",
+        "silverstripe/versioned": "^3.0",
+        "ext-curl": "*",
+        "ext-json": "*"
     },
     "autoload": {
         "psr-4": {
@@ -25,6 +31,8 @@
         }
     },
     "extra": {
-        "expose": []
+        "expose": [
+            "client/dist"
+        ]
     }
 }
