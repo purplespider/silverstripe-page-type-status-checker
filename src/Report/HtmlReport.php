@@ -6,6 +6,7 @@ use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\PageCreator;
+use PurpleSpider\PageTypeTester\ReportMeta;
 use PurpleSpider\PageTypeTester\UrlChecker;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
@@ -68,8 +69,16 @@ class HtmlReport
 
     public function renderHeader(PolyOutput $output, string $title): void
     {
+        $badges = '';
+        foreach ([ReportMeta::siteName(), ReportMeta::cmsVersion()] as $meta) {
+            if ($meta !== '') {
+                $badges .= "<span class='ptl-meta'>" . $this->esc($meta) . "</span>";
+            }
+        }
+
         $output->writeForHtml(
-            "<div class='ptl-header'><div><h1>" . $this->esc($title) . "</h1>"
+            "<div class='ptl-header'><div>"
+            . "<div class='ptl-header-title'><h1>" . $this->esc($title) . "</h1>" . $badges . "</div>"
             . "<p class='ptl-desc'>Checks the HTTP status code of the frontend and CMS edit form for each page "
             . "type.</p></div>"
             . "<output id='ptl-summary' aria-live='polite'></output></div>"

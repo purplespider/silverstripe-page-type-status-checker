@@ -61,11 +61,31 @@ body {
     border-bottom: 2px solid #e9ecef;
 }
 
+.ptl-header-title {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
 .ptl-header h1 {
     color: var(--ptl-text);
     font-weight: 600;
     font-size: 22px;
-    margin: 0 0 8px 0;
+    margin: 0;
+}
+
+/* Site name and Silverstripe version, sat beside the heading. */
+.ptl-meta {
+    padding: 3px 8px;
+    border: 1px solid var(--ptl-border);
+    border-radius: 4px;
+    background: var(--ptl-surface);
+    color: var(--ptl-muted);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
 }
 
 p.ptl-desc {

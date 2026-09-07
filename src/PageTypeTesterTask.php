@@ -11,6 +11,7 @@ use SilverStripe\Control\HTTPRequest;
 use SilverStripe\Dev\BuildTask;
 use SilverStripe\PolyExecution\PolyOutput;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 
@@ -82,7 +83,17 @@ class PageTypeTesterTask extends BuildTask
             (new PageCreator())->handle($request, (string) $request->requestVar(PageCreator::PARAM));
         }
 
-        $output->writeForAnsi("<options=bold>{$this->getTitle()}</>", true);
+        // The site name is author-supplied, so escape it before it reaches the console
+        // formatter or a title containing angle brackets would be read as a style tag.
+        $meta = array_map(
+            OutputFormatter::escape(...),
+            array_filter([ReportMeta::siteName(), ReportMeta::cmsVersion()])
+        );
+        $output->writeForAnsi(
+            "<options=bold>{$this->getTitle()}</>"
+            . ($meta === [] ? '' : ' <fg=gray>(' . implode(', ', $meta) . ')</>'),
+            true
+        );
 
         return $this->execute($input, $output);
     }
