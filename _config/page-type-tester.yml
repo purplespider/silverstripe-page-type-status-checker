@@ -1,0 +1,15 @@
+---
+Name: pagetypetester
+---
+PurpleSpider\PageTypeTester\ActionLinkFinder:
+  # Controller actions that resolve without an ID or other parameter, so a URL can be
+  # built for them even when the page contains no link to them. Add your own here if a
+  # page type exposes a parameterless action that is not linked from the page itself.
+  direct_actions:
+    - rss
+    - index
+
+PurpleSpider\PageTypeTester\Report\HtmlReport:
+  # How many checks the browser report runs at once. Lower this if the site being
+  # checked is slow or rate limited.
+  check_concurrency: 6
