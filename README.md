@@ -102,6 +102,14 @@ A window is a top-level browsing context, so none of that applies: the live CMS 
 
 Browsers that ignore the requested size and position open ordinary tabs instead, which is still both pages, just not arranged. If pop-ups are blocked, the button says so.
 
+### Why the live CMS asks you to log in
+
+Following a "Live site" link into the live CMS often lands on the login screen, even though pasting the same URL into the address bar loads it logged in.
+
+Silverstripe sets its session cookie `SameSite=Strict` (`Session.cookie_samesite`). Strict withholds the cookie on any navigation *initiated by another site*, and a link click - or a `window.open` - from the report is exactly that, so the live site sees no session. Pasting or bookmarking the URL has no cross-site initiator, so the cookie is sent.
+
+Nothing in the report can change that; it is a property of the site being linked to. Either log in when you land there, or set `cookie_samesite: 'Lax'` on that site, which still sends the cookie on top-level cross-site navigations. Live frontend links are unaffected.
+
 ## Creating and deleting pages
 
 Page types with no instances get a "Create" button, so a type can be checked without hand-building a page in the CMS. Creating a page:
