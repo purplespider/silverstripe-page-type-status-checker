@@ -685,14 +685,14 @@
             + '<td><span class="ptl-count">0 <span class="ptl-count-draft">+ 1</span></span></td>'
             + '<td>' + linkCell(
                 '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                cellLink(result.editLink, config.comparing ? 'This site' : 'Edit in CMS',
-                    config.comparing ? 'edit ' + newRow.shortClass + ' in the CMS' : newRow.shortClass,
+                cellLink(result.editLink, config.comparing ? 'This CMS' : 'Edit in CMS',
+                    config.comparing ? 'edit ' + newRow.shortClass + ' on this site' : newRow.shortClass,
                     'ptl-cms', 'desktop')
             ) + '</td>'
             + '<td>' + linkCell(
                 '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                cellLink(result.frontendLink, config.comparing ? 'This site' : 'View Page',
-                    config.comparing ? 'view ' + newRow.shortClass : newRow.shortClass,
+                cellLink(result.frontendLink, config.comparing ? 'This page' : 'View Page',
+                    config.comparing ? 'view ' + newRow.shortClass + ' on this site' : newRow.shortClass,
                     'ptl-frontend', 'desktop')
                     + '<span id="form-indicator-' + newRow.index + '"></span>'
             ) + actionsHtml + '</td>'

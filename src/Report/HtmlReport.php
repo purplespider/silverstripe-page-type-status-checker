@@ -267,16 +267,16 @@ class HtmlReport
 
         $cmsLink = $this->cellLink(
             $row->cmsLink,
-            $comparing ? 'This site' : 'Edit in CMS',
-            $comparing ? "edit {$row->shortClass} in the CMS" : $row->shortClass,
+            $comparing ? 'This CMS' : 'Edit in CMS',
+            $comparing ? "edit {$row->shortClass} on this site" : $row->shortClass,
             'ptl-cms',
             'desktop'
         );
 
         $frontendLink = $this->cellLink(
             $row->frontendLink,
-            $comparing ? 'This site' : 'View Page',
-            $comparing ? "view {$row->shortClass}" : $row->shortClass,
+            $comparing ? 'This page' : 'View Page',
+            $comparing ? "view {$row->shortClass} on this site" : $row->shortClass,
             'ptl-frontend',
             'desktop'
         );
@@ -292,14 +292,14 @@ class HtmlReport
 
             $liveCmsLink = $this->cellLink(
                 $liveCmsUrl,
-                'Live site',
-                "edit {$row->shortClass} in the CMS on the live site",
+                'Live CMS',
+                "edit {$row->shortClass} on the live site",
                 'ptl-cms',
                 'globe'
             );
             $liveFrontendLink = $this->cellLink(
                 $liveFrontendUrl,
-                'Live site',
+                'Live page',
                 "view {$row->shortClass} on the live site",
                 'ptl-frontend',
                 'globe'
@@ -376,10 +376,10 @@ class HtmlReport
     /**
      * A link in one of the status cells.
      *
-     * With a live domain set the visible labels become "This site" and "Live site", so
-     * the two read as a matched pair rather than as an action and an afterthought. The
-     * hidden description carries what the link actually opens, which the short label on
-     * its own no longer says.
+     * With a live domain set the visible labels become "This CMS"/"Live CMS" and
+     * "This page"/"Live page", so each pair reads as a pair while still saying which of
+     * the row's two pairs it belongs to. The hidden description carries the page name,
+     * which the short label on its own no longer says.
      */
     private function cellLink(
         string $url,

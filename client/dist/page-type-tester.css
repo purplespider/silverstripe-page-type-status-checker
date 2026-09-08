@@ -725,17 +725,17 @@ button.ptl-status-login {
 
 /* Compare */
 
-/* #5b3a9e on #f3f0fa is 7.3:1. */
+/* #005a96 on #e8f1f8 is 6.3:1. */
 .ptl-compare-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     margin-left: 10px;
     padding: 4px 9px;
-    background: #f3f0fa;
+    background: #e8f1f8;
     border: 1px solid transparent;
     border-radius: 4px;
-    color: #5b3a9e;
+    color: var(--ptl-primary-dark);
     font-size: 12px;
     font-weight: 600;
     font-family: inherit;
@@ -745,8 +745,8 @@ button.ptl-status-login {
 }
 
 .ptl-compare-btn:hover {
-    background: #e6dff7;
-    border-color: #9a86c4;
+    background: #d3e5f2;
+    border-color: var(--ptl-primary-dark);
 }
 
 /* Delete */
