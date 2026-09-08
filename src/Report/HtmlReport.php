@@ -261,35 +261,62 @@ class HtmlReport
             ? $this->deleteButton((int) $row->page->ID, $row->index, $row->title)
             : '';
 
-        // Comparison links sit beside the local link they are there to be compared
-        // against, rather than in a column of their own at the far end of the row.
-        $liveCmsRow = '';
-        $liveFrontendRow = '';
-        if ($this->liveDomain) {
+        $comparing = $this->liveDomain !== '';
+
+        $cmsLink = $this->cellLink(
+            $row->cmsLink,
+            $comparing ? 'This site' : 'Edit in CMS',
+            $comparing ? "edit {$row->shortClass} in the CMS" : $row->shortClass,
+            'ptl-cms'
+        );
+
+        $frontendLink = $this->cellLink(
+            $row->frontendLink,
+            $comparing ? 'This site' : 'View Page',
+            $comparing ? "view {$row->shortClass}" : $row->shortClass,
+            'ptl-frontend'
+        );
+
+        $liveCmsLink = '';
+        $liveFrontendLink = '';
+        $compareCms = '';
+        $compareFrontend = '';
+        if ($comparing) {
             // Escaped on output. This value comes from the query string.
             $liveCmsUrl = $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID;
-            $liveCmsRow = $this->liveLink($liveCmsUrl, 'Live CMS', $shortClass)
-                . $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
             $liveFrontendUrl = $this->liveDomain . $row->pageUrl;
-            $liveFrontendRow = $this->liveLink($liveFrontendUrl, 'Live Page', $shortClass)
-                . $this->compareButton($row->frontendLink, $liveFrontendUrl, $row->title);
+
+            $liveCmsLink = $this->cellLink(
+                $liveCmsUrl,
+                'Live site',
+                "edit {$row->shortClass} in the CMS on the live site",
+                'ptl-cms'
+            );
+            $liveFrontendLink = $this->cellLink(
+                $liveFrontendUrl,
+                'Live site',
+                "view {$row->shortClass} on the live site",
+                'ptl-frontend'
+            );
+
+            $compareCms = $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
+            $compareFrontend = $this->compareButton($row->frontendLink, $liveFrontendUrl, $row->title);
         }
 
         $cmsCell = $this->linkCell(
             "<span id='cms-status-{$row->index}' class='ptl-status'>"
             . "<span class='ptl-status-placeholder'>?</span></span>",
-            "<a href='" . $this->esc($row->cmsLink) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-            . "Edit in CMS<span class='ptl-sr-only'> ({$shortClass})</span></a>",
-            $liveCmsRow
+            $cmsLink,
+            $liveCmsLink,
+            $compareCms
         );
 
         $frontendCell = $this->linkCell(
             "<span id='frontend-status-{$row->index}' class='ptl-status'>"
             . "<span class='ptl-status-placeholder'>?</span></span>",
-            "<a href='" . $this->esc($row->frontendLink) . "' target='_blank' rel='noopener' class='ptl-frontend'>"
-            . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>"
-            . "<span id='form-indicator-{$row->index}'></span>",
-            $liveFrontendRow
+            $frontendLink . "<span id='form-indicator-{$row->index}'></span>",
+            $liveFrontendLink,
+            $compareFrontend
         );
 
         return "<tr>"
@@ -326,30 +353,33 @@ class HtmlReport
     }
 
     /**
-     * The status badge, the local link, and beneath it the live comparison pair.
+     * Status badge, then the two site links stacked, then Compare.
      *
-     * Stacking the live row rather than letting four items wrap keeps the two sides of
-     * the cell legible at any column width, and the badge sitting outside the stack
-     * indents the second line under the first without a magic number.
+     * Three items across rather than four in a line that wraps wherever the column runs
+     * out. Compare sits beside the stack instead of after the live link because it acts
+     * on the pair, not on one of them.
      */
-    private function linkCell(string $status, string $localRow, string $liveRow): string
+    private function linkCell(string $status, string $localRow, string $liveRow, string $compare): string
     {
-        $live = $liveRow === ''
-            ? ''
-            : "<div class='ptl-link-row ptl-link-row-live'>{$liveRow}</div>";
+        $live = $liveRow === '' ? '' : "<div class='ptl-link-row'>{$liveRow}</div>";
 
         return "<div class='ptl-link-cell'>{$status}<div class='ptl-link-stack'>"
-            . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div></div>";
+            . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div>{$compare}</div>";
     }
 
     /**
-     * A link to the same thing on the live site. Marked as a comparison link rather
-     * than styled like the local one, so the pair is not mistaken for two of a kind.
+     * A link in one of the status cells.
+     *
+     * With a live domain set the visible labels become "This site" and "Live site", so
+     * the two read as a matched pair rather than as an action and an afterthought. The
+     * hidden description carries what the link actually opens, which the short label on
+     * its own no longer says.
      */
-    private function liveLink(string $url, string $label, string $shortClass): string
+    private function cellLink(string $url, string $label, string $description, string $class): string
     {
-        return "<a href='" . $this->esc($url) . "' target='_blank' rel='noopener' class='ptl-live-link'>"
-            . $this->esc($label) . "<span class='ptl-sr-only'> for {$shortClass}</span></a>";
+        return "<a href='" . $this->esc($url) . "' target='_blank' rel='noopener' class='{$class}'>"
+            . $this->esc($label) . "<span class='ptl-sr-only'> &ndash; " . $this->esc($description)
+            . "</span></a>";
     }
 
     /**
@@ -533,6 +563,7 @@ class HtmlReport
             'createParam' => PageCreator::PARAM,
             'deleteParam' => PageDeleter::PARAM,
             'createdPageIds' => array_values($this->createdPageIds),
+            'comparing' => $this->liveDomain !== '',
             'concurrency' => (int) static::config()->get('check_concurrency'),
             'securityToken' => $this->securityToken(),
             'rows' => $rowData,

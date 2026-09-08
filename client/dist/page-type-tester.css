@@ -442,6 +442,12 @@ p.ptl-desc {
     text-decoration: underline;
 }
 
+.ptl-link-cell :is(.ptl-cms, .ptl-frontend) {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 .ptl-table a.ptl-cms:hover {
     color: #343a40;
 }
@@ -471,15 +477,15 @@ p.ptl-desc {
  */
 .ptl-link-cell {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
 }
 
 .ptl-link-stack {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
 }
 
@@ -495,22 +501,8 @@ p.ptl-desc {
     margin-right: 0;
 }
 
-.ptl-link-cell :is(.ptl-cms, .ptl-frontend, .ptl-live-link, .ptl-compare-btn, .ptl-form-badge) {
+.ptl-link-cell :is(.ptl-cms, .ptl-frontend, .ptl-compare-btn, .ptl-form-badge) {
     margin-left: 0;
-}
-
-.ptl-live-link {
-    display: inline-block;
-    margin-left: 10px;
-    color: #5b3a9e;
-    font-weight: 500;
-    font-size: 12px;
-    text-decoration: underline;
-    white-space: nowrap;
-}
-
-.ptl-live-link:hover {
-    color: #472e7c;
 }
 
 .ptl-type {
@@ -724,27 +716,28 @@ button.ptl-status-login {
 
 /* Compare */
 
+/* #5b3a9e on #f3f0fa is 7.3:1. */
 .ptl-compare-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     margin-left: 10px;
-    padding: 1px 6px;
-    background: var(--ptl-surface);
-    border: 1px solid #9a86c4;
-    border-radius: 3px;
+    padding: 4px 9px;
+    background: #f3f0fa;
+    border: 1px solid transparent;
+    border-radius: 4px;
     color: #5b3a9e;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
     font-family: inherit;
-    line-height: 1.5;
-    vertical-align: 1px;
+    line-height: 1.4;
+    white-space: nowrap;
     cursor: pointer;
 }
 
 .ptl-compare-btn:hover {
-    background: #f1ecfa;
-    border-color: #5b3a9e;
+    background: #e6dff7;
+    border-color: #9a86c4;
 }
 
 /* Delete */

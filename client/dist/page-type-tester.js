@@ -685,13 +685,13 @@
             + '<td><span class="ptl-count">0 <span class="ptl-count-draft">+ 1</span></span></td>'
             + '<td>' + linkCell(
                 '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                '<a href="' + escapeHtml(result.editLink) + '" target="_blank" rel="noopener" class="ptl-cms">'
-                    + 'Edit in CMS<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
+                cellLink(result.editLink, config.comparing ? 'This site' : 'Edit in CMS',
+                    config.comparing ? 'edit ' + newRow.shortClass + ' in the CMS' : newRow.shortClass, 'ptl-cms')
             ) + '</td>'
             + '<td>' + linkCell(
                 '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                '<a href="' + escapeHtml(result.frontendLink) + '" target="_blank" rel="noopener" class="ptl-frontend">'
-                    + 'View Page<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
+                cellLink(result.frontendLink, config.comparing ? 'This site' : 'View Page',
+                    config.comparing ? 'view ' + newRow.shortClass : newRow.shortClass, 'ptl-frontend')
                     + '<span id="form-indicator-' + newRow.index + '"></span>'
             ) + actionsHtml + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
@@ -701,11 +701,17 @@
 
     /**
      * Mirrors HtmlReport::linkCell. A page that has just been created does not exist on
-     * the live site, so a created row never has a live comparison row.
+     * the live site yet, so a created row has no live link and nothing to compare.
      */
     function linkCell(status, localRow) {
         return '<div class="ptl-link-cell">' + status
             + '<div class="ptl-link-stack"><div class="ptl-link-row">' + localRow + '</div></div></div>';
+    }
+
+    // Mirrors HtmlReport::cellLink.
+    function cellLink(url, label, description, className) {
+        return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="' + className + '">'
+            + escapeHtml(label) + '<span class="ptl-sr-only"> \u2013 ' + escapeHtml(description) + '</span></a>';
     }
 
     // Mirrors HtmlReport::deleteButton.
