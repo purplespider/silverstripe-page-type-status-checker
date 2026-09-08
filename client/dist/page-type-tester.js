@@ -879,7 +879,7 @@
         return '<td class="ptl-preview-col"><div class="ptl-preview-empty">No preview</div></td>'
             + '<td><span class="ptl-type">' + escapeHtml(row.shortClass) + '</span></td>'
             + '<td><span class="ptl-count">0</span></td>'
-            + '<td colspan="' + (config.emptyColspan || 3) + '" style="text-align:center;">'
+            + '<td colspan="3" style="text-align:center;">'
             + '<button type="button" class="ptl-create-btn" data-ptl-action="create-page" data-ptl-class="'
             + escapeHtml(row.class) + '" data-ptl-short="' + escapeHtml(row.shortClass) + '">'
             + icon('plus') + ' Create ' + escapeHtml(row.shortClass) + '</button>' + note + '</td>';

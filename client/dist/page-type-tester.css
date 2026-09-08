@@ -458,21 +458,22 @@ p.ptl-desc {
     color: #00497a;
 }
 
-.ptl-live-links {
+/*
+ * Comparison links sit beside the local link they pair with, so they are set apart by
+ * colour and size rather than by position. #5b3a9e on white is 7.9:1.
+ */
+.ptl-live-link {
+    display: inline-block;
+    margin-left: 10px;
+    color: #5b3a9e;
+    font-weight: 500;
+    font-size: 12px;
+    text-decoration: underline;
     white-space: nowrap;
 }
 
-.ptl-live-links a {
-    display: inline-block;
-    margin-right: 12px;
-    color: #5b3a9e;
-    font-weight: 500;
-    font-size: 13px;
-    text-decoration: underline;
-}
-
-.ptl-live-links a:last-child {
-    margin-right: 0;
+.ptl-live-link:hover {
+    color: #472e7c;
 }
 
 .ptl-type {

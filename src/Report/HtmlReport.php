@@ -224,8 +224,6 @@ class HtmlReport
      */
     private function pageTypeTable(array $rows): string
     {
-        $liveHeader = $this->liveDomain ? "<th scope='col'>Live Site</th>" : '';
-
         $html = "<table class='ptl-table'>"
             . "<caption class='ptl-sr-only'>Page types with their CMS and frontend status</caption>"
             . "<thead><tr>"
@@ -234,7 +232,6 @@ class HtmlReport
             . "<th scope='col'>Count</th>"
             . "<th scope='col'>CMS Edit Form</th>"
             . "<th scope='col'>Frontend</th>"
-            . $liveHeader
             . "<th scope='col'>Example Page</th>"
             . "</tr></thead><tbody>";
 
@@ -263,16 +260,22 @@ class HtmlReport
             ? $this->deleteButton((int) $row->page->ID, $row->index, $row->title)
             : '';
 
-        $liveCell = '';
+        // Comparison links sit beside the local link they are there to be compared
+        // against, rather than in a column of their own at the far end of the row.
+        $liveCmsLink = '';
+        $liveFrontendLink = '';
         if ($this->liveDomain) {
             // Escaped on output. This value comes from the query string.
-            $liveCms = $this->esc($this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID);
-            $liveFrontend = $this->esc($this->liveDomain . $row->pageUrl);
-            $liveCell = "<td class='ptl-live-links'>"
-                . "<a href='{$liveCms}' target='_blank' rel='noopener'>Live CMS"
-                . "<span class='ptl-sr-only'> for {$shortClass}</span></a>"
-                . "<a href='{$liveFrontend}' target='_blank' rel='noopener'>Live Page"
-                . "<span class='ptl-sr-only'> for {$shortClass}</span></a></td>";
+            $liveCmsLink = $this->liveLink(
+                $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID,
+                'Live CMS',
+                $shortClass
+            );
+            $liveFrontendLink = $this->liveLink(
+                $this->liveDomain . $row->pageUrl,
+                'Live Page',
+                $shortClass
+            );
         }
 
         return "<tr>"
@@ -284,13 +287,12 @@ class HtmlReport
             . "<td><span id='cms-status-{$row->index}' class='ptl-status'>"
             . "<span class='ptl-status-placeholder'>?</span></span>"
             . "<a href='" . $this->esc($row->cmsLink) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-            . "Edit in CMS<span class='ptl-sr-only'> ({$shortClass})</span></a></td>"
+            . "Edit in CMS<span class='ptl-sr-only'> ({$shortClass})</span></a>{$liveCmsLink}</td>"
             . "<td><span id='frontend-status-{$row->index}' class='ptl-status'>"
             . "<span class='ptl-status-placeholder'>?</span></span>"
             . "<a href='" . $this->esc($row->frontendLink) . "' target='_blank' rel='noopener' class='ptl-frontend'>"
-            . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>"
+            . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>{$liveFrontendLink}"
             . "<span id='form-indicator-{$row->index}'></span>{$actionsContainer}</td>"
-            . $liveCell
             . "<td class='ptl-example-cell'><span class='ptl-title'>" . $this->esc($row->title)
             . $deleteButton . "</span>"
             . "<span class='ptl-url'>" . $this->esc($row->pageUrl) . "</span></td>"
@@ -300,7 +302,6 @@ class HtmlReport
     private function emptyRow(PageTypeRow $row): string
     {
         $shortClass = $this->esc($row->shortClass);
-        $colspan = $this->liveDomain ? 4 : 3;
 
         $note = $row->allowedActions
             ? "<div class='ptl-action-note'>Has actions: " . $this->esc(implode(', ', $row->allowedActions)) . "</div>"
@@ -310,11 +311,21 @@ class HtmlReport
             . "<td class='ptl-preview-col'><div class='ptl-preview-empty'>No preview</div></td>"
             . "<td><span class='ptl-type'>{$shortClass}</span></td>"
             . "<td><span class='ptl-count'>0</span></td>"
-            . "<td colspan='{$colspan}' style='text-align:center;'>"
+            . "<td colspan='3' style='text-align:center;'>"
             . "<button type='button' class='ptl-create-btn' data-ptl-action='create-page' "
             . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
             . $this->icon('plus') . " Create {$shortClass}</button>{$note}</td>"
             . "</tr>";
+    }
+
+    /**
+     * A link to the same thing on the live site. Marked as a comparison link rather
+     * than styled like the local one, so the pair is not mistaken for two of a kind.
+     */
+    private function liveLink(string $url, string $label, string $shortClass): string
+    {
+        return "<a href='" . $this->esc($url) . "' target='_blank' rel='noopener' class='ptl-live-link'>"
+            . $this->esc($label) . "<span class='ptl-sr-only'> for {$shortClass}</span></a>";
     }
 
     /**
@@ -480,7 +491,6 @@ class HtmlReport
             'createParam' => PageCreator::PARAM,
             'deleteParam' => PageDeleter::PARAM,
             'createdPageIds' => array_values($this->createdPageIds),
-            'emptyColspan' => $this->liveDomain ? 4 : 3,
             'concurrency' => (int) static::config()->get('check_concurrency'),
             'securityToken' => $this->securityToken(),
             'rows' => $rowData,
