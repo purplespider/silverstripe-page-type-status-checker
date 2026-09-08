@@ -474,10 +474,6 @@ p.ptl-desc {
 }
 
 /*
- * Comparison links sit beside the local link they pair with, so they are set apart by
- * colour and size rather than by position. #5b3a9e on white is 7.9:1.
- */
-/*
  * Link cells
  *
  * The badge sits outside the stack, so the live row is indented under the local link
@@ -487,7 +483,7 @@ p.ptl-desc {
 .ptl-link-cell {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
 }
 
 /*
@@ -504,29 +500,11 @@ p.ptl-desc {
     border-left: 1px solid #ced4da;
 }
 
-/*
- * A hairline from the badge to the link it reports on, so the status reads as
- * belonging to the first row rather than to the cell.
- */
-.ptl-link-cell > .ptl-status {
-    position: relative;
-}
-
-.ptl-link-cell > .ptl-status::after {
-    content: '';
-    position: absolute;
-    left: 100%;
-    top: 50%;
-    width: 8px;
-    height: 1px;
-    background: #ced4da;
-}
-
 .ptl-link-stack {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 7px;
     min-width: 0;
 }
 
