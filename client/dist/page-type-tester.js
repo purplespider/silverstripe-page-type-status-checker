@@ -896,6 +896,119 @@
         }, 4000);
     }
 
+    /* compare */
+
+    /**
+     * Shows the local and live pages side by side.
+     *
+     * Scroll position cannot be synced across origins, so "linked scrolling" works the
+     * other way round: both frames are rendered at full height and the dialog itself
+     * scrolls, moving the two together. Anything taller than the frame keeps its own
+     * scrollbar, which is what the independent mode is for.
+     */
+    var COMPARE_HEIGHT = 3000;
+    var COMPARE_MIN_HEIGHT = 600;
+    var COMPARE_MAX_HEIGHT = 12000;
+
+    function openCompare(button) {
+        var dialog = el('ptl-compare');
+        if (!dialog) {
+            return;
+        }
+
+        el('ptl-compare-title').textContent = 'Compare: ' + button.getAttribute('data-ptl-label');
+        el('ptl-compare-body').innerHTML =
+            comparePane('Local', button.getAttribute('data-ptl-local'))
+            + comparePane('Live', button.getAttribute('data-ptl-live'));
+
+        setCompareHeight();
+
+        // The local page is same-origin, so its height can be measured once it loads.
+        // Both frames are then sized to it, which keeps the scroll range close to the
+        // length of the page rather than a guess.
+        var local = el('ptl-compare-body').querySelector('iframe');
+        if (local) {
+            local.addEventListener('load', setCompareHeight);
+        }
+
+        dialog.showModal();
+    }
+
+    function comparePane(name, url) {
+        return '<div class="ptl-compare-pane">'
+            + '<div class="ptl-compare-pane-head">'
+            + '<strong>' + escapeHtml(name) + '</strong>'
+            + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">Open in new tab</a>'
+            + '<span class="ptl-compare-url">' + escapeHtml(url) + '</span>'
+            + '</div>'
+            + '<iframe title="' + escapeHtml(name + ': ' + url) + '" src="' + escapeHtml(url) + '"></iframe>'
+            + '</div>';
+    }
+
+    function setCompareHeight() {
+        var body = el('ptl-compare-body');
+
+        if (!body.classList.contains('ptl-linked')) {
+            body.querySelectorAll('iframe').forEach(function (frame) {
+                frame.style.height = '';
+            });
+            return;
+        }
+
+        var height = COMPARE_HEIGHT + 'px';
+        var measured = measureLocalHeight(body.querySelector('iframe'));
+        if (measured) {
+            height = measured + 'px';
+        }
+
+        body.querySelectorAll('iframe').forEach(function (frame) {
+            frame.style.height = height;
+        });
+    }
+
+    function measureLocalHeight(frame) {
+        try {
+            var doc = frame && frame.contentDocument;
+            if (!doc || !doc.documentElement) {
+                return 0;
+            }
+
+            var height = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
+
+            return Math.max(COMPARE_MIN_HEIGHT, Math.min(COMPARE_MAX_HEIGHT, height));
+        } catch (e) {
+            // Cross-origin, so the height cannot be read. The default stands.
+            return 0;
+        }
+    }
+
+    function toggleCompareScroll(button) {
+        var body = el('ptl-compare-body');
+        var linked = !body.classList.contains('ptl-linked');
+
+        body.classList.toggle('ptl-linked', linked);
+        button.setAttribute('aria-pressed', linked ? 'true' : 'false');
+        button.innerHTML = icon('link') + (linked ? ' Linked scrolling' : ' Independent scrolling');
+
+        setCompareHeight();
+        body.scrollTop = 0;
+    }
+
+    var compareDialog = el('ptl-compare');
+    if (compareDialog) {
+        // Emptying the panes stops the pages loading, and any media in them playing on.
+        compareDialog.addEventListener('close', function () {
+            el('ptl-compare-body').innerHTML = '';
+        });
+
+        // A click that lands on the dialog itself came from the backdrop.
+        compareDialog.addEventListener('click', function (event) {
+            if (event.target === compareDialog) {
+                compareDialog.close();
+            }
+        });
+    }
+
     /* rechecks */
 
     async function recheck(target) {
@@ -1002,6 +1115,15 @@
                 break;
             case 'delete-all-created':
                 deleteAllCreated(trigger);
+                break;
+            case 'compare':
+                openCompare(trigger);
+                break;
+            case 'close-compare':
+                el('ptl-compare').close();
+                break;
+            case 'toggle-compare-scroll':
+                toggleCompareScroll(trigger);
                 break;
             case 'toggle-previews':
                 togglePreviews(trigger);

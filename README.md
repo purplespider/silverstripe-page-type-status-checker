@@ -61,7 +61,7 @@ The command exits with a non-zero status if any check fails, so it can be used i
 | `--skip-actions` | Skip checking `allowed_actions` URLs |
 | `--skip-admin` | Skip ModelAdmin sections and SiteConfig |
 | `--randomise` | Pick a random example page per type instead of the first |
-| `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links |
+| `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare view |
 | `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
 
 All options also work as query string parameters in the browser.
@@ -87,6 +87,16 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 - `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
+
+## Comparing against the live site
+
+Setting a live domain adds a "Live CMS" and "Live Page" link beside each local link, plus a **Compare** button on the frontend pair. Compare opens the local and live pages side by side in a dialog.
+
+**Linked scrolling.** Scroll position cannot be synchronised across origins - a page on another domain will not let the parent read or set its scroll offset. So the panes are linked the other way round: both frames are rendered at their full height and the dialog itself scrolls, carrying the two together. The local page is same-origin, so its height is measured and both frames are sized to it. Switch to "Independent scrolling" for pages taller than the frame, where each pane keeps its own scrollbar.
+
+**When a pane stays blank.** A site that sends `X-Frame-Options` or a `frame-ancestors` policy cannot be embedded, and the pane will be empty. Use "Open in new tab" instead, or allow framing from your local origin on the server you are comparing against.
+
+Compare is offered on the frontend pair only. Silverstripe sets `X-Frame-Options: SAMEORIGIN` on the admin (`LeftAndMain.frame_options`), so a live CMS screen can never be embedded from another origin and the pane would always be blank.
 
 ## Creating and deleting pages
 
