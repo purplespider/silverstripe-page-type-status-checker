@@ -81,17 +81,9 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 
 Setting a live domain adds a "Live CMS" and "Live Page" link beside each local link, and a **Compare** button after each pair. Compare opens the local and live version of the same thing in two windows, side by side, half the screen each.
 
-### Why does the live CMS ask me to log in?
+### Why do the live CMS links ask me to log in? (Silverstripe 6+)
 
-Following a "Live site" link into the live CMS lands on the login screen, even though pasting the same URL into the address bar loads it logged in.
-
-The link is right - it points at the CMS URL. What differs is how you got there. Silverstripe sets its session cookie `SameSite=Strict`, and Strict tells the browser to withhold the cookie on any navigation *initiated by another site*. A link click, or a `window.open` from Compare, is exactly that, so the live site sees no session and redirects you to log in. Pasting or bookmarking the URL has no cross-site initiator, so the cookie is sent and you are already logged in.
-
-**This started in Silverstripe 6.0.** The `Session.cookie_samesite` default was `Lax` in every 4.x and 5.x release and changed to `Strict` during the 6.0 cycle. Nothing about your browser or this report changed.
-
-**It depends on the version of the *live* site, not this one.** The cookie belongs to the site being linked to. Upgrading a local copy to 6 while production is still on 5 leaves the links working; they start bouncing through login once the live site itself is on 6.
-
-It is not specific to this report either. Any cross-site link into the CMS is affected the same way, including ones followed from email, chat or a monitoring alert.
+If the LIVE site is on Silverstripe 6, and you add it's URL for previewing, you may keep getting asked to login every time you click a "Live CMS" link. This is because starting in Silverstripe 6, the default value of `Session.cookie_samesite` changed from `Lax` to `Strict`, which tells the browser to withhold the login cookie on any navigation *initiated by another site*.
 
 To fix it, set the pre-6.0 behaviour on the site being linked to:
 
