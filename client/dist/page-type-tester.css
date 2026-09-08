@@ -320,7 +320,7 @@ p.ptl-desc {
     border-top-color: #343a40;
 }
 
-:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-form-badge, .ptl-check-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
+:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-delete-btn, .ptl-form-badge, .ptl-check-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
     display: block;
 }
 
@@ -682,6 +682,58 @@ button.ptl-status-login {
     background: #f8d7da;
     border-color: var(--ptl-fail);
     color: #6a1a21;
+}
+
+/* Delete */
+
+/*
+ * Sits inline after the page name, so it has to stay small. #b02a37 on white is 6.4:1
+ * and the border 3.4:1, both clear of the minimum at this size.
+ */
+.ptl-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    margin-left: 8px;
+    padding: 1px 6px;
+    background: var(--ptl-surface);
+    border: 1px solid #c9737d;
+    border-radius: 3px;
+    color: var(--ptl-fail);
+    font-size: 11px;
+    font-weight: 500;
+    font-family: inherit;
+    line-height: 1.5;
+    vertical-align: 1px;
+    cursor: pointer;
+}
+
+.ptl-delete-btn:hover {
+    background: #f8d7da;
+    border-color: var(--ptl-fail);
+    color: #6a1a21;
+}
+
+.ptl-delete-btn:disabled {
+    cursor: wait;
+    opacity: 0.8;
+}
+
+.ptl-btn-danger {
+    border-color: #c9737d;
+    color: var(--ptl-fail);
+}
+
+.ptl-btn-danger:hover {
+    background: #f8d7da;
+    border-color: var(--ptl-fail);
+    color: #6a1a21;
+}
+
+/* .ptl-btn-wrap sets display, which would otherwise win over the hidden attribute. */
+.ptl-btn-wrap[hidden] {
+    display: none;
 }
 
 /* Previews */

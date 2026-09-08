@@ -6,6 +6,7 @@ use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\PageCreator;
+use PurpleSpider\PageTypeTester\PageDeleter;
 use PurpleSpider\PageTypeTester\ReportMeta;
 use PurpleSpider\PageTypeTester\UrlChecker;
 use SilverStripe\Control\Controller;
@@ -37,10 +38,14 @@ class HtmlReport
      */
     private static int $check_concurrency = 6;
 
+    /**
+     * @param int[] $createdPageIds IDs of pages made by the Create buttons this session
+     */
     public function __construct(
         private readonly UrlChecker $checker,
         private readonly string $liveDomain = '',
-        private readonly bool $randomise = false
+        private readonly bool $randomise = false,
+        private readonly array $createdPageIds = []
     ) {
     }
 
@@ -110,6 +115,7 @@ class HtmlReport
             'document' => 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm2 16H8v-2h8zm0-4H8v-2h8z'
                 . 'm-3-5V3.5L18.5 9z',
             'plus' => 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z',
+            'trash' => 'M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z',
             'eye' => 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11'
                 . '-7.5zm0 12a4.5 4.5 0 1 1 4.5-4.5 4.5 4.5 0 0 1-4.5 4.5zm0-7a2.5 2.5 0 1 0 2.5 2.5A2.5 2.5 0'
                 . ' 0 0 12 9.5z',
@@ -195,6 +201,10 @@ class HtmlReport
 
         $html .= "<div class='ptl-divider'></div>";
 
+        $html .= $this->deleteCreatedButton();
+
+        $html .= "<div class='ptl-divider'></div>";
+
         $html .= "<div class='ptl-btn-group'>"
             . "<button type='button' data-ptl-action='randomise' class='ptl-btn'>"
             . $this->icon('shuffle') . " Randomise</button>";
@@ -248,6 +258,11 @@ class HtmlReport
             ? "<span id='actions-container-{$row->index}' class='ptl-actions-container'></span>"
             : '';
 
+        // Only pages this report created can be deleted again, so only those get a button.
+        $deleteButton = in_array((int) $row->page->ID, $this->createdPageIds, true)
+            ? $this->deleteButton((int) $row->page->ID, $row->index, $row->title)
+            : '';
+
         $liveCell = '';
         if ($this->liveDomain) {
             // Escaped on output. This value comes from the query string.
@@ -276,7 +291,8 @@ class HtmlReport
             . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>"
             . "<span id='form-indicator-{$row->index}'></span>{$actionsContainer}</td>"
             . $liveCell
-            . "<td class='ptl-example-cell'><span class='ptl-title'>" . $this->esc($row->title) . "</span>"
+            . "<td class='ptl-example-cell'><span class='ptl-title'>" . $this->esc($row->title)
+            . $deleteButton . "</span>"
             . "<span class='ptl-url'>" . $this->esc($row->pageUrl) . "</span></td>"
             . "</tr>";
     }
@@ -299,6 +315,37 @@ class HtmlReport
             . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
             . $this->icon('plus') . " Create {$shortClass}</button>{$note}</td>"
             . "</tr>";
+    }
+
+    /**
+     * Sits inline after the page name, small enough not to compete with it. The tooltip
+     * says what deleting does; the label alone would not.
+     */
+    private function deleteButton(int $pageId, int $rowIndex, string $title): string
+    {
+        return "<button type='button' class='ptl-delete-btn' data-ptl-action='delete-page'"
+            . " data-ptl-page='{$pageId}' data-ptl-row='{$rowIndex}'"
+            . " aria-label='" . $this->esc('Delete ' . $title . ', created by this report') . "'>"
+            . $this->icon('trash') . " Delete"
+            . "<span class='ptl-tip ptl-tip-above'>Created by this report."
+            . " Recoverable from the CMS archive.</span></button>";
+    }
+
+    /**
+     * Hidden until something has been created, rather than sitting in the toolbar
+     * permanently reading zero.
+     */
+    private function deleteCreatedButton(): string
+    {
+        $count = count($this->createdPageIds);
+        $hidden = $count === 0 ? ' hidden' : '';
+
+        return "<span class='ptl-btn-wrap' id='ptl-delete-created-wrap'{$hidden}>"
+            . "<button type='button' id='ptl-delete-created-btn' data-ptl-action='delete-all-created'"
+            . " class='ptl-btn ptl-btn-danger'>" . $this->icon('trash')
+            . " Delete Created Pages (<span id='ptl-delete-created-count'>{$count}</span>)</button>"
+            . "<span class='ptl-tip ptl-tip-below'>Deletes every page created here with a Create"
+            . " button</span></span>";
     }
 
     /**
@@ -405,7 +452,9 @@ class HtmlReport
 
             $rowData[] = [
                 'index' => $row->index,
+                'class' => $row->class,
                 'shortClass' => $row->shortClass,
+                'pageId' => (int) $row->page->ID,
                 'cmsLink' => $row->cmsLink,
                 'frontendLink' => $row->frontendLink,
                 'expected' => $row->expectedStatus,
@@ -429,6 +478,9 @@ class HtmlReport
             'loginPath' => $this->checker->getLoginPath(),
             'directActions' => array_values(ActionLinkFinder::getDirectActions()),
             'createParam' => PageCreator::PARAM,
+            'deleteParam' => PageDeleter::PARAM,
+            'createdPageIds' => array_values($this->createdPageIds),
+            'emptyColspan' => $this->liveDomain ? 4 : 3,
             'concurrency' => (int) static::config()->get('check_concurrency'),
             'securityToken' => $this->securityToken(),
             'rows' => $rowData,

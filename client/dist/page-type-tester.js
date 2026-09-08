@@ -32,6 +32,7 @@
     var rows = config.rows.slice();
     var adminSections = config.adminSections.slice();
     var adminEditLinks = config.adminEditLinks.slice();
+    var createdPageIds = (config.createdPageIds || []).slice();
 
     /* helpers */
 
@@ -648,13 +649,16 @@
 
             var newRow = {
                 index: rows.length ? Math.max.apply(null, rows.map(function (r) { return r.index; })) + 1 : 0,
+                class: className,
                 shortClass: result.shortClass,
+                pageId: result.id,
                 cmsLink: result.editLink,
                 frontendLink: result.frontendLink,
                 expected: result.expectedStatus,
                 actions: result.allowedActions || []
             };
             rows.push(newRow);
+            rememberCreatedPage(result.id);
 
             row.removeAttribute('id');
             row.innerHTML = buildRowHtml(newRow, result);
@@ -686,8 +690,199 @@
             + '<a href="' + escapeHtml(result.frontendLink) + '" target="_blank" rel="noopener" class="ptl-frontend">'
             + 'View Page<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
             + '<span id="form-indicator-' + newRow.index + '"></span>' + actionsHtml + '</td>'
-            + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title) + '</span>'
+            + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
+            + deleteButtonHtml(newRow, result.title) + '</span>'
             + '<span class="ptl-url">' + escapeHtml(result.pageUrl) + '</span></td>';
+    }
+
+    // Mirrors HtmlReport::deleteButton.
+    function deleteButtonHtml(row, title) {
+        return '<button type="button" class="ptl-delete-btn" data-ptl-action="delete-page"'
+            + ' data-ptl-page="' + row.pageId + '" data-ptl-row="' + row.index + '"'
+            + ' aria-label="' + escapeHtml('Delete ' + title + ', created by this report') + '">'
+            + icon('trash') + ' Delete'
+            + '<span class="ptl-tip ptl-tip-above">Created by this report.'
+            + ' Recoverable from the CMS archive.</span></button>';
+    }
+
+    /* delete */
+
+    /**
+     * Pages made by the Create buttons are litter once the check has run. The server
+     * only accepts IDs it created this session, so this cannot reach anything else.
+     */
+    async function deletePage(button) {
+        var pageId = parseInt(button.getAttribute('data-ptl-page'), 10);
+        var rowIndex = parseInt(button.getAttribute('data-ptl-row'), 10);
+        var rowEl = button.closest('tr');
+        var rowData = findRow(rowIndex);
+        var original = button.innerHTML;
+
+        if (!window.confirm('Delete this page?\n\nIt was created by this report. It comes off draft and '
+            + 'live, and stays recoverable from the CMS archive.')) {
+            return;
+        }
+
+        button.disabled = true;
+        button.innerHTML = icon('spinner', 'ptl-spin') + ' Deleting...';
+
+        try {
+            var result = await postDelete(pageId);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed');
+            }
+
+            forgetCreatedPage(pageId);
+
+            // Another page of this type is still there, so reload to show it as the
+            // example rather than pretending the type has none.
+            if (result.remaining > 0) {
+                window.location.reload();
+                return;
+            }
+
+            releaseRowTotals(rowEl);
+            dropRow(rowIndex);
+
+            if (rowData) {
+                rowEl.innerHTML = buildEmptyRowHtml(rowData);
+            } else {
+                rowEl.remove();
+            }
+
+            updateSummary(false);
+        } catch (e) {
+            showCreateError(button, original, e.message);
+        }
+    }
+
+    async function deleteAllCreated(button) {
+        if (!createdPageIds.length) {
+            return;
+        }
+
+        if (!window.confirm('Delete all ' + createdPageIds.length + ' page(s) created by this report?\n\n'
+            + 'They come off draft and live, and stay recoverable from the CMS archive.')) {
+            return;
+        }
+
+        var original = button.innerHTML;
+        var ids = createdPageIds.slice();
+        var failed = 0;
+
+        button.disabled = true;
+
+        for (var i = 0; i < ids.length; i++) {
+            button.innerHTML = icon('spinner', 'ptl-spin') + ' Deleting ' + (i + 1) + '/' + ids.length + '...';
+
+            try {
+                var result = await postDelete(ids[i]);
+                if (result.success) {
+                    forgetCreatedPage(ids[i]);
+                } else {
+                    failed++;
+                }
+            } catch (e) {
+                failed++;
+            }
+        }
+
+        if (failed) {
+            showCreateError(button, original, failed + ' failed');
+            return;
+        }
+
+        window.location.reload();
+    }
+
+    async function postDelete(pageId) {
+        var body = new FormData();
+        body.append(config.deleteParam, pageId);
+        body.append(config.securityToken.name, config.securityToken.value);
+
+        // POST with a security token, for the same reason as creating: this writes to
+        // the database and must not be reachable by following a URL.
+        var response = await fetch(config.taskUrl, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' },
+            body: body
+        });
+
+        return await response.json();
+    }
+
+    function forgetCreatedPage(pageId) {
+        var at = createdPageIds.indexOf(pageId);
+        if (at !== -1) {
+            createdPageIds.splice(at, 1);
+        }
+
+        updateCreatedCount();
+    }
+
+    function rememberCreatedPage(pageId) {
+        if (createdPageIds.indexOf(pageId) === -1) {
+            createdPageIds.push(pageId);
+        }
+
+        updateCreatedCount();
+    }
+
+    function updateCreatedCount() {
+        var wrap = el('ptl-delete-created-wrap');
+        var count = el('ptl-delete-created-count');
+        if (!wrap || !count) {
+            return;
+        }
+
+        count.textContent = createdPageIds.length;
+        wrap.hidden = createdPageIds.length === 0;
+    }
+
+    /**
+     * Takes a row's results back out of the running totals before its cells are
+     * replaced, so the summary still matches what is on screen.
+     */
+    function releaseRowTotals(row) {
+        row.querySelectorAll('.ptl-status-badge').forEach(function (badge) {
+            if (badge.classList.contains('ptl-status-pass')) {
+                state.totals.passed = Math.max(0, state.totals.passed - 1);
+            } else if (badge.classList.contains('ptl-status-login')) {
+                state.totals.login = Math.max(0, state.totals.login - 1);
+            } else {
+                state.totals.failed = Math.max(0, state.totals.failed - 1);
+            }
+        });
+
+        row.querySelectorAll('.ptl-check-badge').forEach(function () {
+            state.totals.manual = Math.max(0, state.totals.manual - 1);
+        });
+    }
+
+    function dropRow(index) {
+        rows = rows.filter(function (row) {
+            return row.index !== index;
+        });
+    }
+
+    /**
+     * Mirrors HtmlReport::emptyRow, so a row whose only page has just been deleted goes
+     * back to offering to create one.
+     */
+    function buildEmptyRowHtml(row) {
+        var note = row.actions && row.actions.length
+            ? '<div class="ptl-action-note">Has actions: ' + escapeHtml(row.actions.join(', ')) + '</div>'
+            : '';
+
+        return '<td class="ptl-preview-col"><div class="ptl-preview-empty">No preview</div></td>'
+            + '<td><span class="ptl-type">' + escapeHtml(row.shortClass) + '</span></td>'
+            + '<td><span class="ptl-count">0</span></td>'
+            + '<td colspan="' + (config.emptyColspan || 3) + '" style="text-align:center;">'
+            + '<button type="button" class="ptl-create-btn" data-ptl-action="create-page" data-ptl-class="'
+            + escapeHtml(row.class) + '" data-ptl-short="' + escapeHtml(row.shortClass) + '">'
+            + icon('plus') + ' Create ' + escapeHtml(row.shortClass) + '</button>' + note + '</td>';
     }
 
     function showCreateError(button, original, message) {
@@ -801,6 +996,12 @@
                 break;
             case 'create-page':
                 createPage(trigger);
+                break;
+            case 'delete-page':
+                deletePage(trigger);
+                break;
+            case 'delete-all-created':
+                deleteAllCreated(trigger);
                 break;
             case 'toggle-previews':
                 togglePreviews(trigger);

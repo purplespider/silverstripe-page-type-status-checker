@@ -15,6 +15,7 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Status badges are buttons: click or tab to them and press Enter to re-check a single link
 - Detects and tests controller `$allowed_actions`
 - Detects forms on pages (flags for manual testing)
+- "Create" buttons to add a test page for any page type that has none, and delete them again afterwards
 - "Open All" buttons to open CMS or frontend links in new tabs
 - Optional page preview thumbnails
 - Randomise selected pages for broader testing
@@ -87,12 +88,20 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
 
-## Creating pages
+## Creating and deleting pages
 
-Page types with no instances get a "Create" button. Creating a page:
+Page types with no instances get a "Create" button, so a type can be checked without hand-building a page in the CMS. Creating a page:
 
 - requires POST with a valid security token, so it cannot be triggered by following a URL, by a crawler, or by browser prefetch;
 - respects the page type's `canCreate()`, so page types that restrict creation (for example to enforce a single instance) are not bypassed.
+
+Every page created this way gets a small "Delete" button after its name, and a "Delete Created Pages (n)" button appears in the toolbar to clear them all at once. The toolbar button is hidden until something has been created. Deleting:
+
+- requires POST with a valid security token, as creating does;
+- respects the page's `canDelete()`;
+- only accepts IDs this report created during the current session. The list is held in the session, so the endpoint can never be pointed at pre-existing content, and the buttons disappear once the session ends.
+
+Deleting archives the page, which is what the CMS delete button does: it comes off draft and live but remains recoverable from the CMS archive.
 
 ## Development
 

@@ -27,6 +27,7 @@ use Symfony\Component\Console\Input\InputOption;
  *  - Report\CliReport                 the terminal report
  *  - Report\HtmlReport                the browser report
  *  - PageCreator                      the "create a page of this type" endpoint
+ *  - PageDeleter                      the "delete a page this report created" endpoint
  */
 class PageTypeTesterTask extends BuildTask
 {
@@ -77,10 +78,14 @@ class PageTypeTesterTask extends BuildTask
     {
         $request = $this->getHttpRequest();
 
-        // Page creation writes to the database, so it is handled before anything is
-        // rendered and terminates the request with a JSON response.
+        // These write to the database, so they are handled before anything is rendered
+        // and terminate the request with a JSON response.
         if ($request && $request->requestVar(PageCreator::PARAM)) {
             (new PageCreator())->handle($request, (string) $request->requestVar(PageCreator::PARAM));
+        }
+
+        if ($request && $request->requestVar(PageDeleter::PARAM)) {
+            (new PageDeleter())->handle($request, (string) $request->requestVar(PageDeleter::PARAM));
         }
 
         // The site name is author-supplied, so escape it before it reaches the console
@@ -111,7 +116,9 @@ class PageTypeTesterTask extends BuildTask
         $rows = (new PageTypeCollector($randomise))->collect();
         $adminSections = $skipAdmin ? [] : (new AdminSectionCollector())->collect();
 
-        $htmlReport = new HtmlReport($checker, $liveDomain, $randomise);
+        $createdPageIds = CreatedPageRegistry::forCurrentRequest()->existing();
+
+        $htmlReport = new HtmlReport($checker, $liveDomain, $randomise, $createdPageIds);
         $htmlReport->renderHeader($output, $this->getTitle());
 
         $cliReport = new CliReport($checker, $actionFinder, $skipActions);

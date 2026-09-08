@@ -8,7 +8,6 @@ use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
 use SilverStripe\Control\HTTPRequest;
-use SilverStripe\Control\HTTPResponse;
 use SilverStripe\Control\HTTPResponse_Exception;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Security\SecurityToken;
@@ -23,6 +22,8 @@ use Throwable;
  */
 class PageCreator
 {
+    use RespondsWithJson;
+
     public const PARAM = 'createPage';
 
     /**
@@ -59,7 +60,7 @@ class PageCreator
         }
 
         try {
-            $this->respond($this->createPage($className), 200);
+            $this->respond($this->createPage($request, $className), 200);
         } catch (HTTPResponse_Exception $e) {
             throw $e;
         } catch (Throwable $e) {
@@ -67,7 +68,7 @@ class PageCreator
         }
     }
 
-    private function createPage(string $className): array
+    private function createPage(HTTPRequest $request, string $className): array
     {
         $shortName = ClassInfo::shortName($className);
 
@@ -75,6 +76,9 @@ class PageCreator
         $page = $className::create();
         $page->Title = 'New ' . $shortName;
         $page->write();
+
+        // Remembered so the report can offer to delete it again.
+        (new CreatedPageRegistry($request))->add((int) $page->ID);
 
         $baseUrl = Director::absoluteBaseURL();
         $frontendLink = (string) $page->AbsoluteLink();
@@ -90,16 +94,5 @@ class PageCreator
             'allowedActions' => PageTypeCollector::allowedActionsFor($className),
             'expectedStatus' => ExpectedStatus::forShortName($shortName),
         ];
-    }
-
-    /**
-     * @throws HTTPResponse_Exception
-     */
-    private function respond(array $data, int $code): void
-    {
-        $response = HTTPResponse::create((string) json_encode($data), $code);
-        $response->addHeader('Content-Type', 'application/json');
-
-        throw new HTTPResponse_Exception($response);
     }
 }
