@@ -686,12 +686,14 @@
             + '<td>' + linkCell(
                 '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
                 cellLink(result.editLink, config.comparing ? 'This site' : 'Edit in CMS',
-                    config.comparing ? 'edit ' + newRow.shortClass + ' in the CMS' : newRow.shortClass, 'ptl-cms')
+                    config.comparing ? 'edit ' + newRow.shortClass + ' in the CMS' : newRow.shortClass,
+                    'ptl-cms', 'desktop')
             ) + '</td>'
             + '<td>' + linkCell(
                 '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
                 cellLink(result.frontendLink, config.comparing ? 'This site' : 'View Page',
-                    config.comparing ? 'view ' + newRow.shortClass : newRow.shortClass, 'ptl-frontend')
+                    config.comparing ? 'view ' + newRow.shortClass : newRow.shortClass,
+                    'ptl-frontend', 'desktop')
                     + '<span id="form-indicator-' + newRow.index + '"></span>'
             ) + actionsHtml + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
@@ -709,9 +711,11 @@
     }
 
     // Mirrors HtmlReport::cellLink.
-    function cellLink(url, label, description, className) {
+    function cellLink(url, label, description, className, iconName) {
         return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="' + className + '">'
-            + escapeHtml(label) + '<span class="ptl-sr-only"> \u2013 ' + escapeHtml(description) + '</span></a>';
+            + icon(iconName)
+            + '<span class="ptl-link-label">' + escapeHtml(label) + '</span>'
+            + '<span class="ptl-sr-only"> \u2013 ' + escapeHtml(description) + '</span></a>';
     }
 
     // Mirrors HtmlReport::deleteButton.

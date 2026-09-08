@@ -442,10 +442,19 @@ p.ptl-desc {
     text-decoration: underline;
 }
 
-.ptl-link-cell :is(.ptl-cms, .ptl-frontend) {
+.ptl-table .ptl-link-cell a:is(.ptl-cms, .ptl-frontend) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 0;
     font-size: 13px;
     font-weight: 600;
+    text-decoration: none;
     white-space: nowrap;
+}
+
+.ptl-link-label {
+    text-decoration: underline;
 }
 
 .ptl-table a.ptl-cms:hover {
@@ -477,7 +486,7 @@ p.ptl-desc {
  */
 .ptl-link-cell {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
 }
 
@@ -493,6 +502,7 @@ p.ptl-desc {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    min-height: 22px;
     gap: 4px 10px;
 }
 
@@ -501,7 +511,7 @@ p.ptl-desc {
     margin-right: 0;
 }
 
-.ptl-link-cell :is(.ptl-cms, .ptl-frontend, .ptl-compare-btn, .ptl-form-badge) {
+.ptl-link-cell :is(.ptl-compare-btn, .ptl-form-badge) {
     margin-left: 0;
 }
 
@@ -610,7 +620,6 @@ button.ptl-status-login {
 
 .ptl-form-badge,
 .ptl-check-badge {
-    margin-left: 6px;
     padding: 3px 8px;
     border-radius: 4px;
     background: #fff3cd;

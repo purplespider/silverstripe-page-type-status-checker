@@ -117,6 +117,8 @@ class HtmlReport
             'plus' => 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z',
             'trash' => 'M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z',
             'compare' => 'M3 5h8v14H3zm10 0h8v14h-8z',
+            'desktop' => 'M20 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h5v2H7v2h10v-2h-2v-2h5a2 2 0 0 0 2-2V5a2 2 0'
+                . ' 0 0-2-2zm0 12H4V5h16z',
             'eye' => 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11'
                 . '-7.5zm0 12a4.5 4.5 0 1 1 4.5-4.5 4.5 4.5 0 0 1-4.5 4.5zm0-7a2.5 2.5 0 1 0 2.5 2.5A2.5 2.5 0'
                 . ' 0 0 12 9.5z',
@@ -267,14 +269,16 @@ class HtmlReport
             $row->cmsLink,
             $comparing ? 'This site' : 'Edit in CMS',
             $comparing ? "edit {$row->shortClass} in the CMS" : $row->shortClass,
-            'ptl-cms'
+            'ptl-cms',
+            'desktop'
         );
 
         $frontendLink = $this->cellLink(
             $row->frontendLink,
             $comparing ? 'This site' : 'View Page',
             $comparing ? "view {$row->shortClass}" : $row->shortClass,
-            'ptl-frontend'
+            'ptl-frontend',
+            'desktop'
         );
 
         $liveCmsLink = '';
@@ -290,13 +294,15 @@ class HtmlReport
                 $liveCmsUrl,
                 'Live site',
                 "edit {$row->shortClass} in the CMS on the live site",
-                'ptl-cms'
+                'ptl-cms',
+                'globe'
             );
             $liveFrontendLink = $this->cellLink(
                 $liveFrontendUrl,
                 'Live site',
                 "view {$row->shortClass} on the live site",
-                'ptl-frontend'
+                'ptl-frontend',
+                'globe'
             );
 
             $compareCms = $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
@@ -375,11 +381,19 @@ class HtmlReport
      * hidden description carries what the link actually opens, which the short label on
      * its own no longer says.
      */
-    private function cellLink(string $url, string $label, string $description, string $class): string
-    {
+    private function cellLink(
+        string $url,
+        string $label,
+        string $description,
+        string $class,
+        string $icon
+    ): string {
+        // The underline goes on the label rather than the anchor, so it does not run
+        // under the icon as well.
         return "<a href='" . $this->esc($url) . "' target='_blank' rel='noopener' class='{$class}'>"
-            . $this->esc($label) . "<span class='ptl-sr-only'> &ndash; " . $this->esc($description)
-            . "</span></a>";
+            . $this->icon($icon)
+            . "<span class='ptl-link-label'>" . $this->esc($label) . "</span>"
+            . "<span class='ptl-sr-only'> &ndash; " . $this->esc($description) . "</span></a>";
     }
 
     /**
