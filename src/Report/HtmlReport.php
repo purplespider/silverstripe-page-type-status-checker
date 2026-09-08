@@ -263,17 +263,34 @@ class HtmlReport
 
         // Comparison links sit beside the local link they are there to be compared
         // against, rather than in a column of their own at the far end of the row.
-        $liveCmsLink = '';
-        $liveFrontendLink = '';
+        $liveCmsRow = '';
+        $liveFrontendRow = '';
         if ($this->liveDomain) {
             // Escaped on output. This value comes from the query string.
             $liveCmsUrl = $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID;
-            $liveCmsLink = $this->liveLink($liveCmsUrl, 'Live CMS', $shortClass)
+            $liveCmsRow = $this->liveLink($liveCmsUrl, 'Live CMS', $shortClass)
                 . $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
             $liveFrontendUrl = $this->liveDomain . $row->pageUrl;
-            $liveFrontendLink = $this->liveLink($liveFrontendUrl, 'Live Page', $shortClass)
+            $liveFrontendRow = $this->liveLink($liveFrontendUrl, 'Live Page', $shortClass)
                 . $this->compareButton($row->frontendLink, $liveFrontendUrl, $row->title);
         }
+
+        $cmsCell = $this->linkCell(
+            "<span id='cms-status-{$row->index}' class='ptl-status'>"
+            . "<span class='ptl-status-placeholder'>?</span></span>",
+            "<a href='" . $this->esc($row->cmsLink) . "' target='_blank' rel='noopener' class='ptl-cms'>"
+            . "Edit in CMS<span class='ptl-sr-only'> ({$shortClass})</span></a>",
+            $liveCmsRow
+        );
+
+        $frontendCell = $this->linkCell(
+            "<span id='frontend-status-{$row->index}' class='ptl-status'>"
+            . "<span class='ptl-status-placeholder'>?</span></span>",
+            "<a href='" . $this->esc($row->frontendLink) . "' target='_blank' rel='noopener' class='ptl-frontend'>"
+            . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>"
+            . "<span id='form-indicator-{$row->index}'></span>",
+            $liveFrontendRow
+        );
 
         return "<tr>"
             . "<td class='ptl-preview-col'><div class='ptl-preview'>"
@@ -281,15 +298,8 @@ class HtmlReport
             . $this->esc($row->frontendLink) . "'></iframe></div></td>"
             . "<td><span class='ptl-type'>{$shortClass}</span></td>"
             . "<td>{$count}</td>"
-            . "<td><span id='cms-status-{$row->index}' class='ptl-status'>"
-            . "<span class='ptl-status-placeholder'>?</span></span>"
-            . "<a href='" . $this->esc($row->cmsLink) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-            . "Edit in CMS<span class='ptl-sr-only'> ({$shortClass})</span></a>{$liveCmsLink}</td>"
-            . "<td><span id='frontend-status-{$row->index}' class='ptl-status'>"
-            . "<span class='ptl-status-placeholder'>?</span></span>"
-            . "<a href='" . $this->esc($row->frontendLink) . "' target='_blank' rel='noopener' class='ptl-frontend'>"
-            . "View Page<span class='ptl-sr-only'> ({$shortClass})</span></a>{$liveFrontendLink}"
-            . "<span id='form-indicator-{$row->index}'></span>{$actionsContainer}</td>"
+            . "<td>{$cmsCell}</td>"
+            . "<td>{$frontendCell}{$actionsContainer}</td>"
             . "<td class='ptl-example-cell'><span class='ptl-title'>" . $this->esc($row->title)
             . $deleteButton . "</span>"
             . "<span class='ptl-url'>" . $this->esc($row->pageUrl) . "</span></td>"
@@ -313,6 +323,23 @@ class HtmlReport
             . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
             . $this->icon('plus') . " Create {$shortClass}</button>{$note}</td>"
             . "</tr>";
+    }
+
+    /**
+     * The status badge, the local link, and beneath it the live comparison pair.
+     *
+     * Stacking the live row rather than letting four items wrap keeps the two sides of
+     * the cell legible at any column width, and the badge sitting outside the stack
+     * indents the second line under the first without a magic number.
+     */
+    private function linkCell(string $status, string $localRow, string $liveRow): string
+    {
+        $live = $liveRow === ''
+            ? ''
+            : "<div class='ptl-link-row ptl-link-row-live'>{$liveRow}</div>";
+
+        return "<div class='ptl-link-cell'>{$status}<div class='ptl-link-stack'>"
+            . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div></div>";
     }
 
     /**

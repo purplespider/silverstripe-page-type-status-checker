@@ -462,6 +462,43 @@ p.ptl-desc {
  * Comparison links sit beside the local link they pair with, so they are set apart by
  * colour and size rather than by position. #5b3a9e on white is 7.9:1.
  */
+/*
+ * Link cells
+ *
+ * The badge sits outside the stack, so the live row is indented under the local link
+ * without depending on the badge's width. Without the stack, a status badge and two
+ * links and a button wrap wherever the column happens to run out.
+ */
+.ptl-link-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.ptl-link-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.ptl-link-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+/* Spacing comes from the flex gaps here. The margins are for the admin table. */
+.ptl-link-cell .ptl-status {
+    margin-right: 0;
+}
+
+.ptl-link-cell :is(.ptl-cms, .ptl-frontend, .ptl-live-link, .ptl-compare-btn, .ptl-form-badge) {
+    margin-left: 0;
+}
+
 .ptl-live-link {
     display: inline-block;
     margin-left: 10px;

@@ -683,16 +683,29 @@
             + escapeHtml(result.frontendLink) + '"></iframe></div></td>'
             + '<td><span class="ptl-type">' + escapeHtml(newRow.shortClass) + '</span></td>'
             + '<td><span class="ptl-count">0 <span class="ptl-count-draft">+ 1</span></span></td>'
-            + '<td><span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>'
-            + '<a href="' + escapeHtml(result.editLink) + '" target="_blank" rel="noopener" class="ptl-cms">'
-            + 'Edit in CMS<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a></td>'
-            + '<td><span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>'
-            + '<a href="' + escapeHtml(result.frontendLink) + '" target="_blank" rel="noopener" class="ptl-frontend">'
-            + 'View Page<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
-            + '<span id="form-indicator-' + newRow.index + '"></span>' + actionsHtml + '</td>'
+            + '<td>' + linkCell(
+                '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
+                '<a href="' + escapeHtml(result.editLink) + '" target="_blank" rel="noopener" class="ptl-cms">'
+                    + 'Edit in CMS<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
+            ) + '</td>'
+            + '<td>' + linkCell(
+                '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
+                '<a href="' + escapeHtml(result.frontendLink) + '" target="_blank" rel="noopener" class="ptl-frontend">'
+                    + 'View Page<span class="ptl-sr-only"> ' + escapeHtml(newRow.shortClass) + '</span></a>'
+                    + '<span id="form-indicator-' + newRow.index + '"></span>'
+            ) + actionsHtml + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
             + deleteButtonHtml(newRow, result.title) + '</span>'
             + '<span class="ptl-url">' + escapeHtml(result.pageUrl) + '</span></td>';
+    }
+
+    /**
+     * Mirrors HtmlReport::linkCell. A page that has just been created does not exist on
+     * the live site, so a created row never has a live comparison row.
+     */
+    function linkCell(status, localRow) {
+        return '<div class="ptl-link-cell">' + status
+            + '<div class="ptl-link-stack"><div class="ptl-link-row">' + localRow + '</div></div></div>';
     }
 
     // Mirrors HtmlReport::deleteButton.
