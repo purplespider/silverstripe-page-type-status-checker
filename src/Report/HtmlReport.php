@@ -369,8 +369,12 @@ class HtmlReport
     {
         $live = $liveRow === '' ? '' : "<div class='ptl-link-row'>{$liveRow}</div>";
 
+        // The rule marks where the pair ends. Compare belongs to both rows, so it sits
+        // the other side of it rather than lining up with either one.
+        $compareCell = $compare === '' ? '' : "<span class='ptl-compare-wrap'>{$compare}</span>";
+
         return "<div class='ptl-link-cell'>{$status}<div class='ptl-link-stack'>"
-            . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div>{$compare}</div>";
+            . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div>{$compareCell}</div>";
     }
 
     /**
