@@ -61,7 +61,7 @@ The command exits with a non-zero status if any check fails, so it can be used i
 | `--skip-actions` | Skip checking `allowed_actions` URLs |
 | `--skip-admin` | Skip ModelAdmin sections and SiteConfig |
 | `--randomise` | Pick a random example page per type instead of the first |
-| `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare view |
+| `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare button |
 | `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
 
 All options also work as query string parameters in the browser.
@@ -90,13 +90,17 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 
 ## Comparing against the live site
 
-Setting a live domain adds a "Live CMS" and "Live Page" link beside each local link, plus a **Compare** button on the frontend pair. Compare opens the local and live pages side by side in a dialog.
+Setting a live domain adds a "Live CMS" and "Live Page" link beside each local link, and a **Compare** button after each pair. Compare opens the local and live version of the same thing in two windows, side by side, half the screen each.
 
-**Linked scrolling.** Scroll position cannot be synchronised across origins - a page on another domain will not let the parent read or set its scroll offset. So the panes are linked the other way round: both frames are rendered at their full height and the dialog itself scrolls, carrying the two together. The local page is same-origin, so its height is measured and both frames are sized to it. Switch to "Independent scrolling" for pages taller than the frame, where each pane keeps its own scrollbar.
+Windows rather than an embedded side-by-side view, because embedding cannot work:
 
-**When a pane stays blank.** A site that sends `X-Frame-Options` or a `frame-ancestors` policy cannot be embedded, and the pane will be empty. Use "Open in new tab" instead, or allow framing from your local origin on the server you are comparing against.
+- Silverstripe sends `X-Frame-Options: SAMEORIGIN` on the admin (`LeftAndMain.frame_options`), so a live CMS screen can never be framed from another origin.
+- Plenty of sites send the same header for every response, at the web server or CDN, which leaves the live half of any embedded view blank.
+- Scroll position cannot be synchronised across origins either, so linked scrolling between two embedded pages is not possible against a real live site.
 
-Compare is offered on the frontend pair only. Silverstripe sets `X-Frame-Options: SAMEORIGIN` on the admin (`LeftAndMain.frame_options`), so a live CMS screen can never be embedded from another origin and the pane would always be blank.
+A window is a top-level browsing context, so none of that applies: the live CMS stays logged in, the page renders exactly as it normally does, and both halves are real.
+
+Browsers that ignore the requested size and position open ordinary tabs instead, which is still both pages, just not arranged. If pop-ups are blocked, the button says so.
 
 ## Creating and deleting pages
 

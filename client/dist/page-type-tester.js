@@ -669,7 +669,7 @@
                 updateSummary(false);
             }
         } catch (e) {
-            showCreateError(button, original, e.message);
+            showButtonError(button, original, e.message);
         }
     }
 
@@ -753,7 +753,7 @@
 
             updateSummary(false);
         } catch (e) {
-            showCreateError(button, original, e.message);
+            showButtonError(button, original, e.message);
         }
     }
 
@@ -789,7 +789,7 @@
         }
 
         if (failed) {
-            showCreateError(button, original, failed + ' failed');
+            showButtonError(button, original, failed + ' failed');
             return;
         }
 
@@ -885,12 +885,12 @@
             + icon('plus') + ' Create ' + escapeHtml(row.shortClass) + '</button>' + note + '</td>';
     }
 
-    function showCreateError(button, original, message) {
-        button.classList.add('ptl-create-error');
+    function showButtonError(button, original, message) {
+        button.classList.add('ptl-btn-error');
         button.innerHTML = icon('cross') + ' ' + escapeHtml(message || 'Error');
 
         setTimeout(function () {
-            button.classList.remove('ptl-create-error');
+            button.classList.remove('ptl-btn-error');
             button.innerHTML = original;
             button.disabled = false;
         }, 4000);
@@ -899,114 +899,48 @@
     /* compare */
 
     /**
-     * Shows the local and live pages side by side.
+     * Opens the local and live version of the same thing in windows side by side.
      *
-     * Scroll position cannot be synced across origins, so "linked scrolling" works the
-     * other way round: both frames are rendered at full height and the dialog itself
-     * scrolls, moving the two together. Anything taller than the frame keeps its own
-     * scrollbar, which is what the independent mode is for.
+     * Windows rather than frames: Silverstripe sends X-Frame-Options SAMEORIGIN on the
+     * admin, and plenty of sites send it for every response, so an embedded live pane
+     * is usually blank. A window is a top-level browsing context, so framing rules do
+     * not apply, the live CMS stays logged in, and the page renders exactly as it does
+     * normally - which is the point of comparing.
      */
-    var COMPARE_HEIGHT = 3000;
-    var COMPARE_MIN_HEIGHT = 600;
-    var COMPARE_MAX_HEIGHT = 12000;
-
     function openCompare(button) {
-        var dialog = el('ptl-compare');
-        if (!dialog) {
+        var original = button.innerHTML;
+
+        // Half the screen each. Browsers that ignore the position open ordinary tabs,
+        // which is still both pages, just not arranged.
+        var width = Math.floor(screen.availWidth / 2);
+        var height = screen.availHeight;
+        var left = screen.availLeft || 0;
+        var top = screen.availTop || 0;
+
+        // Named, so using Compare again reuses the same two windows rather than
+        // leaving a trail of them behind.
+        var local = window.open(
+            button.getAttribute('data-ptl-local'),
+            'ptl-compare-local',
+            windowFeatures(width, height, left, top)
+        );
+        var live = window.open(
+            button.getAttribute('data-ptl-live'),
+            'ptl-compare-live',
+            windowFeatures(width, height, left + width, top)
+        );
+
+        if (!local || !live) {
+            showButtonError(button, original, 'Pop-ups blocked');
             return;
         }
 
-        el('ptl-compare-title').textContent = 'Compare: ' + button.getAttribute('data-ptl-label');
-        el('ptl-compare-body').innerHTML =
-            comparePane('Local', button.getAttribute('data-ptl-local'))
-            + comparePane('Live', button.getAttribute('data-ptl-live'));
-
-        setCompareHeight();
-
-        // The local page is same-origin, so its height can be measured once it loads.
-        // Both frames are then sized to it, which keeps the scroll range close to the
-        // length of the page rather than a guess.
-        var local = el('ptl-compare-body').querySelector('iframe');
-        if (local) {
-            local.addEventListener('load', setCompareHeight);
-        }
-
-        dialog.showModal();
+        live.focus();
     }
 
-    function comparePane(name, url) {
-        return '<div class="ptl-compare-pane">'
-            + '<div class="ptl-compare-pane-head">'
-            + '<strong>' + escapeHtml(name) + '</strong>'
-            + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">Open in new tab</a>'
-            + '<span class="ptl-compare-url">' + escapeHtml(url) + '</span>'
-            + '</div>'
-            + '<iframe title="' + escapeHtml(name + ': ' + url) + '" src="' + escapeHtml(url) + '"></iframe>'
-            + '</div>';
-    }
-
-    function setCompareHeight() {
-        var body = el('ptl-compare-body');
-
-        if (!body.classList.contains('ptl-linked')) {
-            body.querySelectorAll('iframe').forEach(function (frame) {
-                frame.style.height = '';
-            });
-            return;
-        }
-
-        var height = COMPARE_HEIGHT + 'px';
-        var measured = measureLocalHeight(body.querySelector('iframe'));
-        if (measured) {
-            height = measured + 'px';
-        }
-
-        body.querySelectorAll('iframe').forEach(function (frame) {
-            frame.style.height = height;
-        });
-    }
-
-    function measureLocalHeight(frame) {
-        try {
-            var doc = frame && frame.contentDocument;
-            if (!doc || !doc.documentElement) {
-                return 0;
-            }
-
-            var height = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
-
-            return Math.max(COMPARE_MIN_HEIGHT, Math.min(COMPARE_MAX_HEIGHT, height));
-        } catch (e) {
-            // Cross-origin, so the height cannot be read. The default stands.
-            return 0;
-        }
-    }
-
-    function toggleCompareScroll(button) {
-        var body = el('ptl-compare-body');
-        var linked = !body.classList.contains('ptl-linked');
-
-        body.classList.toggle('ptl-linked', linked);
-        button.setAttribute('aria-pressed', linked ? 'true' : 'false');
-        button.innerHTML = icon('link') + (linked ? ' Linked scrolling' : ' Independent scrolling');
-
-        setCompareHeight();
-        body.scrollTop = 0;
-    }
-
-    var compareDialog = el('ptl-compare');
-    if (compareDialog) {
-        // Emptying the panes stops the pages loading, and any media in them playing on.
-        compareDialog.addEventListener('close', function () {
-            el('ptl-compare-body').innerHTML = '';
-        });
-
-        // A click that lands on the dialog itself came from the backdrop.
-        compareDialog.addEventListener('click', function (event) {
-            if (event.target === compareDialog) {
-                compareDialog.close();
-            }
-        });
+    function windowFeatures(width, height, left, top) {
+        return 'popup=yes,noopener=no,width=' + width + ',height=' + height
+            + ',left=' + left + ',top=' + top;
     }
 
     /* rechecks */
@@ -1118,12 +1052,6 @@
                 break;
             case 'compare':
                 openCompare(trigger);
-                break;
-            case 'close-compare':
-                el('ptl-compare').close();
-                break;
-            case 'toggle-compare-scroll':
-                toggleCompareScroll(trigger);
                 break;
             case 'toggle-previews':
                 togglePreviews(trigger);

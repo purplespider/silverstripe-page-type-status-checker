@@ -68,7 +68,6 @@ class HtmlReport
 
         $output->writeForHtml($this->liveDomainSection());
         $output->writeForHtml($this->helpSection());
-        $output->writeForHtml($this->compareDialog());
         $output->writeForHtml("</div>");
         $output->writeForHtml($this->configPayload($rows, $adminSections));
     }
@@ -118,8 +117,6 @@ class HtmlReport
             'plus' => 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z',
             'trash' => 'M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z',
             'compare' => 'M3 5h8v14H3zm10 0h8v14h-8z',
-            'link' => 'M3.9 12A3.1 3.1 0 0 1 7 8.9h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2'
-                . 'H8zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z',
             'eye' => 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11'
                 . '-7.5zm0 12a4.5 4.5 0 1 1 4.5-4.5 4.5 4.5 0 0 1-4.5 4.5zm0-7a2.5 2.5 0 1 0 2.5 2.5A2.5 2.5 0'
                 . ' 0 0 12 9.5z',
@@ -270,21 +267,12 @@ class HtmlReport
         $liveFrontendLink = '';
         if ($this->liveDomain) {
             // Escaped on output. This value comes from the query string.
-            $liveCmsLink = $this->liveLink(
-                $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID,
-                'Live CMS',
-                $shortClass
-            );
-            $liveFrontendLink = $this->liveLink(
-                $this->liveDomain . $row->pageUrl,
-                'Live Page',
-                $shortClass
-            );
-            $liveFrontendLink .= $this->compareButton(
-                $row->frontendLink,
-                $this->liveDomain . $row->pageUrl,
-                $row->title
-            );
+            $liveCmsUrl = $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID;
+            $liveCmsLink = $this->liveLink($liveCmsUrl, 'Live CMS', $shortClass)
+                . $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
+            $liveFrontendUrl = $this->liveDomain . $row->pageUrl;
+            $liveFrontendLink = $this->liveLink($liveFrontendUrl, 'Live Page', $shortClass)
+                . $this->compareButton($row->frontendLink, $liveFrontendUrl, $row->title);
         }
 
         return "<tr>"
@@ -338,45 +326,21 @@ class HtmlReport
     }
 
     /**
-     * Opens the local and live pages side by side. Offered on the frontend pair only:
-     * Silverstripe sends X-Frame-Options SAMEORIGIN on the admin, so a live CMS screen
-     * can never be embedded from another origin and the pane would always be blank.
+     * Opens the local and live version of the same thing in windows side by side.
+     *
+     * Windows rather than frames in a dialog, because framing cannot work here:
+     * Silverstripe sends X-Frame-Options SAMEORIGIN on the admin, and plenty of sites
+     * send it for every response, which leaves the live half blank. A window is a
+     * top-level browsing context, so framing rules do not apply and the live CMS stays
+     * logged in as normal.
      */
     private function compareButton(string $localUrl, string $liveUrl, string $title): string
     {
         return "<button type='button' class='ptl-compare-btn' data-ptl-action='compare'"
             . " data-ptl-local='" . $this->esc($localUrl) . "'"
             . " data-ptl-live='" . $this->esc($liveUrl) . "'"
-            . " data-ptl-label='" . $this->esc($title) . "'"
-            . " aria-label='" . $this->esc('Compare ' . $title . ' with the live site') . "'>"
+            . " aria-label='" . $this->esc('Open ' . $title . ' and its live version side by side') . "'>"
             . $this->icon('compare') . " Compare</button>";
-    }
-
-    /**
-     * One dialog, filled in by the client when a Compare button is used. A native
-     * <dialog> brings its own focus trap, backdrop and Escape handling.
-     */
-    private function compareDialog(): string
-    {
-        if (!$this->liveDomain) {
-            return '';
-        }
-
-        return "<dialog id='ptl-compare' class='ptl-compare' aria-labelledby='ptl-compare-title'>"
-            . "<div class='ptl-compare-head'>"
-            . "<h2 id='ptl-compare-title' class='ptl-compare-title'>Compare</h2>"
-            . "<div class='ptl-compare-tools'>"
-            . "<button type='button' id='ptl-compare-sync' class='ptl-btn'"
-            . " data-ptl-action='toggle-compare-scroll' aria-pressed='true'>"
-            . $this->icon('link') . " Linked scrolling</button>"
-            . "<button type='button' class='ptl-btn' data-ptl-action='close-compare'>"
-            . $this->icon('cross') . " Close</button>"
-            . "</div></div>"
-            . "<p class='ptl-compare-note'>Both pages are rendered at full height and scroll together."
-            . " If a pane stays blank, that site sends <code>X-Frame-Options</code> and cannot be"
-            . " embedded &ndash; open it in a new tab instead.</p>"
-            . "<div class='ptl-compare-body ptl-linked' id='ptl-compare-body'></div>"
-            . "</dialog>";
     }
 
     /**
