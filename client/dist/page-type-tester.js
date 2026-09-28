@@ -30,6 +30,7 @@
     };
 
     var rows = config.rows.slice();
+    var blocks = (config.blocks || []).slice();
     var adminSections = config.adminSections.slice();
     var adminEditLinks = config.adminEditLinks.slice();
     var createdPageIds = (config.createdPageIds || []).slice();
@@ -60,8 +61,11 @@
     /**
      * Redirects are not followed, so a page that redirects reports its own status
      * rather than the status of wherever it points. This matches the CLI report.
+     *
+     * wantErrorBody keeps the body of an error response, for endpoints that say what
+     * went wrong in it.
      */
-    async function checkLink(url, wantHtml) {
+    async function checkLink(url, wantHtml, wantErrorBody) {
         try {
             var response = await fetch(url, {
                 method: 'GET',
@@ -74,14 +78,17 @@
                 status = 302;
             }
 
-            var result = { status: status, loginRequired: false, html: '' };
+            var result = { status: status, loginRequired: false, html: '', body: '' };
             if (wantHtml && response.status === 200) {
                 result.html = await response.text();
+            }
+            if (wantErrorBody && response.status >= 400) {
+                result.body = await response.text();
             }
 
             return result;
         } catch (e) {
-            return { status: 0, loginRequired: false, html: '' };
+            return { status: 0, loginRequired: false, html: '', body: '' };
         }
     }
 
@@ -99,12 +106,12 @@
         }
     }
 
-    async function checkCmsLink(url) {
+    async function checkCmsLink(url, wantErrorBody) {
         if (state.notLoggedIn) {
-            return { status: 302, loginRequired: true, html: '' };
+            return { status: 302, loginRequired: true, html: '', body: '' };
         }
 
-        var result = await checkLink(url, false);
+        var result = await checkLink(url, false, wantErrorBody);
 
         if (result.status >= 300 && result.status < 400 && await isLoginRedirect(url)) {
             markNotLoggedIn();
@@ -142,20 +149,26 @@
             className = 'ptl-status-redirect';
             glyph = icon('cross');
         } else {
-            label = result.status === 0 ? 'ERR' : String(result.status);
+            label = statusLabel(result.status);
             className = 'ptl-status-fail';
             glyph = icon('cross');
         }
 
+        // A note says more than the status alone, such as which request failed or the
+        // error it gave.
         var description = result.loginRequired
             ? 'Redirected to the CMS login page. Log in, then re-check.'
-            : 'Responded with ' + label + '.';
+            : result.note || 'Responded with ' + label + '.';
 
         return '<button type="button" class="ptl-status-badge ' + className + '"'
             + ' data-ptl-action="recheck" data-ptl-target="' + escapeHtml(target) + '"'
             + ' aria-label="' + escapeHtml(description + ' Activate to re-check.') + '"'
             + ' title="' + escapeHtml(description + ' Click to re-check.') + '">'
             + escapeHtml(label) + glyph + '</button>';
+    }
+
+    function statusLabel(status) {
+        return status === 0 ? 'ERR' : String(status);
     }
 
     function placeholder(text) {
@@ -385,6 +398,21 @@
         span.innerHTML = placeholder('...');
         var result = await checkCmsLink(row.cmsLink);
 
+        // The edit form loads its blocks afterwards, so it answers 200 even when the
+        // blocks editor inside it cannot load. The first block list to fail stands in
+        // for the whole cell.
+        var blockLists = row.blockListUrls || [];
+        for (var i = 0; i < blockLists.length && result.status === 200 && !state.stopRequested; i++) {
+            var listResult = await checkCmsLink(blockLists[i]);
+            if (listResult.loginRequired || listResult.status !== 200) {
+                if (!listResult.loginRequired) {
+                    listResult.note = 'The edit form responded with 200, but its block list responded with '
+                        + statusLabel(listResult.status) + ', so the blocks editor will not load.';
+                }
+                result = listResult;
+            }
+        }
+
         if (state.stopRequested) {
             span.innerHTML = '';
             return;
@@ -490,6 +518,55 @@
         recordResult(result, [200]);
     }
 
+    /**
+     * One of a block type's three checks: 'editor', 'form' or 'frontend'.
+     */
+    async function checkBlockCell(block, kind) {
+        var span = el('block-' + kind + '-status-' + block.index);
+        if (!span) {
+            return;
+        }
+
+        span.innerHTML = placeholder('...');
+
+        var result;
+        if (kind === 'editor') {
+            result = await checkCmsLink(block.editorCheckUrl, true);
+            result.note = blockErrorNote(result);
+        } else if (kind === 'form') {
+            result = await checkCmsLink(block.editFormUrl);
+        } else if (block.frontendNeedsLogin) {
+            // A draft block can only be rendered for somebody logged in to the CMS.
+            result = await checkCmsLink(block.frontendUrl);
+        } else {
+            result = await checkLink(block.frontendUrl, false);
+        }
+
+        if (state.stopRequested) {
+            span.innerHTML = '';
+            return;
+        }
+
+        span.innerHTML = statusBadge(result, [200], 'block-' + kind + ':' + block.index);
+        recordResult(result, [200]);
+    }
+
+    // The editor check says what went wrong in a JSON body.
+    function blockErrorNote(result) {
+        try {
+            var error = JSON.parse(result.body).error;
+            return error ? 'Responded with ' + statusLabel(result.status) + ': ' + error : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function findBlock(index) {
+        return blocks.filter(function (block) {
+            return block.index === index;
+        })[0];
+    }
+
     /* the main run */
 
     async function checkAll(includeActions) {
@@ -540,7 +617,8 @@
             });
         }
 
-        var total = pageRows.length * 2 + adminSections.length + adminEditLinks.length + expectedActionCount;
+        var total = pageRows.length * 2 + blocks.length * 3 + adminSections.length + adminEditLinks.length
+            + expectedActionCount;
         var done = 0;
 
         function progress() {
@@ -578,6 +656,14 @@
             });
             tasks.push(function () {
                 return checkCmsCell(row);
+            });
+        });
+
+        blocks.forEach(function (block) {
+            ['editor', 'form', 'frontend'].forEach(function (kind) {
+                tasks.push(function () {
+                    return checkBlockCell(block, kind);
+                });
             });
         });
 
@@ -655,7 +741,8 @@
                 cmsLink: result.editLink,
                 frontendLink: result.frontendLink,
                 expected: result.expectedStatus,
-                actions: result.allowedActions || []
+                actions: result.allowedActions || [],
+                blockListUrls: result.blockListUrls || []
             };
             rows.push(newRow);
             rememberCreatedPage(result.id);
@@ -1135,6 +1222,11 @@
             await checkAdminCell(adminSections[index]);
         } else if (kind === 'admin-edit') {
             await checkAdminEditCell(adminEditLinks[index]);
+        } else if (kind === 'block-editor' || kind === 'block-form' || kind === 'block-frontend') {
+            var block = findBlock(index);
+            if (block) {
+                await checkBlockCell(block, kind.slice('block-'.length));
+            }
         } else if (kind === 'action') {
             var row = findRow(index);
             var action = parts[2];
@@ -1289,10 +1381,26 @@
         }
     });
 
+    /**
+     * Opens every link of one kind from one table. Each table's buttons name their
+     * kind in data-ptl-links.
+     */
     function openAll(which) {
-        var links = which === 'cms'
-            ? rows.filter(function (r) { return r.index >= 0; }).map(function (r) { return r.cmsLink; })
-            : rows.filter(function (r) { return r.index >= 0; }).map(function (r) { return r.frontendLink; });
+        var pageRows = rows.filter(function (r) { return r.index >= 0; });
+        var sources = {
+            'cms': function () { return pageRows.map(function (r) { return r.cmsLink; }); },
+            'frontend': function () { return pageRows.map(function (r) { return r.frontendLink; }); },
+            'block-cms': function () { return blocks.map(function (b) { return b.editFormUrl; }); },
+            'block-frontend': function () { return blocks.map(function (b) { return b.frontendUrl; }); },
+            'admin': function () { return adminSections.map(function (s) { return s.url; }); },
+            'admin-edit': function () { return adminEditLinks.map(function (l) { return l.url; }); }
+        };
+
+        // A block with no edit form has an empty URL, and the same URL twice would
+        // only open a duplicate tab.
+        var links = (sources[which] ? sources[which]() : []).filter(function (url, i, all) {
+            return url && all.indexOf(url) === i;
+        });
 
         links.forEach(function (url) {
             window.open(url, '_blank', 'noopener');

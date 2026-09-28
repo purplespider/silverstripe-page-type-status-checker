@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester\Collector;
 
 use Page;
+use PurpleSpider\PageTypeTester\ElementalSupport;
 use PurpleSpider\PageTypeTester\ExpectedStatus;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use SilverStripe\CMS\Model\SiteTree;
@@ -127,7 +128,8 @@ class PageTypeCollector
             (string) $page->Title,
             Controller::join_links($baseUrl, 'admin/pages/edit/show', $page->ID),
             $frontendLink,
-            '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/')
+            '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
+            ElementalSupport::blockListUrlsFor($page)
         );
     }
 

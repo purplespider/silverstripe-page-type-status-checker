@@ -4,11 +4,13 @@ namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
+use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\CheckResult;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\UrlChecker;
 use SilverStripe\Control\Director;
 use SilverStripe\PolyExecution\PolyOutput;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
  * Runs the checks and writes the terminal report.
@@ -37,10 +39,16 @@ class CliReport
 
     /**
      * @param PageTypeRow[] $rows
+     * @param BlockTypeRow[] $blockRows Empty when Elemental is not installed or blocks are skipped.
      * @param AdminSection[] $adminSections
      */
-    public function render(PolyOutput $output, array $rows, array $adminSections, bool $skipAdmin): void
-    {
+    public function render(
+        PolyOutput $output,
+        array $rows,
+        array $blockRows,
+        array $adminSections,
+        bool $skipAdmin
+    ): void {
         if (!$this->checker->isVerifyingSsl()) {
             $output->writeForAnsi("<comment>TLS certificate verification is off for this run.</comment>\n");
         }
@@ -51,6 +59,13 @@ class CliReport
 
         foreach ($rows as $row) {
             $this->renderPageType($output, $row);
+        }
+
+        if ($blockRows) {
+            $output->writeForAnsi("\n<comment>Checking block types...</comment>\n\n");
+            foreach ($blockRows as $blockRow) {
+                $this->renderBlockType($output, $blockRow);
+            }
         }
 
         if ($skipAdmin) {
@@ -80,9 +95,64 @@ class CliReport
         $cmsResult = $this->checker->check($row->cmsLink);
         $this->report($output, 'CMS', $row->shortClass, $row->cmsLink, $cmsResult, [200]);
 
+        // The edit form loads its blocks afterwards, so it answers 200 even when the
+        // blocks editor inside it cannot load.
+        foreach ($row->blockListUrls as $url) {
+            $result = $this->checker->check($url);
+            $this->report($output, 'CMS block list', $row->shortClass, $url, $result, [200]);
+            $this->reportJsonError($output, $result);
+        }
+
         $this->renderActions($output, $row, $frontendResult);
 
         $output->writeForAnsi("\n");
+    }
+
+    private function renderBlockType(PolyOutput $output, BlockTypeRow $row): void
+    {
+        if (!$row->hasElement()) {
+            $output->writeForAnsi("<comment>{$row->shortClass}</comment> ({$row->totalCount}): no blocks to check\n");
+            return;
+        }
+
+        $output->writeForAnsi("<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
+
+        $checks = [
+            'CMS Summary' => $row->editorCheckUrl,
+            'CMS Edit Form' => $row->editFormUrl,
+            'Frontend' => $row->frontendUrl,
+        ];
+
+        foreach ($checks as $label => $url) {
+            // A block on something other than a page may have no edit form URL.
+            if ($url === '') {
+                continue;
+            }
+
+            $result = $this->checker->check($url);
+            $this->report($output, $label, $row->shortClass, $url, $result, [200], "Block {$label}");
+            $this->reportJsonError($output, $result);
+        }
+
+        $output->writeForAnsi("\n");
+    }
+
+    /**
+     * The block endpoints answer a failure with the exception message in JSON, which
+     * says far more than the status code alone.
+     */
+    private function reportJsonError(PolyOutput $output, CheckResult $result): void
+    {
+        if ($result->status < 400 || $result->body === '') {
+            return;
+        }
+
+        $data = json_decode($result->body, true);
+        if (!is_array($data) || !isset($data['error']) || !is_string($data['error'])) {
+            return;
+        }
+
+        $output->writeForAnsi("\n    <comment>" . OutputFormatter::escape($data['error']) . "</comment>");
     }
 
     private function renderActions(PolyOutput $output, PageTypeRow $row, CheckResult $frontendResult): void

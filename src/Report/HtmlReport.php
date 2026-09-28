@@ -4,6 +4,7 @@ namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
+use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\PageCreator;
 use PurpleSpider\PageTypeTester\PageDeleter;
@@ -51,16 +52,26 @@ class HtmlReport
 
     /**
      * @param PageTypeRow[] $rows
+     * @param BlockTypeRow[] $blockRows Empty when Elemental is not installed or blocks are skipped.
      * @param AdminSection[] $adminSections
      */
-    public function render(PolyOutput $output, array $rows, array $adminSections, bool $skipAdmin): void
-    {
+    public function render(
+        PolyOutput $output,
+        array $rows,
+        array $blockRows,
+        array $adminSections,
+        bool $skipAdmin
+    ): void {
         $output->writeForHtml($this->assets());
         $output->writeForHtml($this->iconSprite());
         $output->writeForHtml("<div class='ptl-wrap'>");
         $output->writeForHtml($this->loginBanner());
         $output->writeForHtml($this->toolbar());
         $output->writeForHtml($this->pageTypeTable($rows));
+
+        if ($blockRows) {
+            $output->writeForHtml($this->blockTypeTable($blockRows));
+        }
 
         if (!$skipAdmin) {
             $output->writeForHtml($this->adminTable($adminSections));
@@ -69,7 +80,7 @@ class HtmlReport
         $output->writeForHtml($this->liveDomainSection());
         $output->writeForHtml($this->helpSection());
         $output->writeForHtml("</div>");
-        $output->writeForHtml($this->configPayload($rows, $adminSections));
+        $output->writeForHtml($this->configPayload($rows, $blockRows, $adminSections));
     }
 
     public function renderHeader(PolyOutput $output, string $title): void
@@ -191,15 +202,6 @@ class HtmlReport
         $html .= "<div class='ptl-divider'></div>";
 
         $html .= "<div class='ptl-btn-group'>"
-            . "<button type='button' data-ptl-action='open-all' data-ptl-links='cms' class='ptl-btn'>"
-            . $this->icon('external') . " Open All CMS</button>"
-            . "<button type='button' data-ptl-action='open-all' data-ptl-links='frontend' class='ptl-btn'>"
-            . $this->icon('external') . " Open All Frontend</button>"
-            . "</div>";
-
-        $html .= "<div class='ptl-divider'></div>";
-
-        $html .= "<div class='ptl-btn-group'>"
             . "<button type='button' data-ptl-action='randomise' class='ptl-btn'>"
             . $this->icon('shuffle') . " Randomise</button>";
 
@@ -216,20 +218,41 @@ class HtmlReport
     }
 
     /**
-     * The table's heading, with the controls that change how the table is shown.
+     * A table in a panel, under a heading bar with the controls that act on it.
      *
-     * These sit with the table rather than in the toolbar, which keeps the toolbar to
-     * things that act (check, open, pick, delete) and short enough for one line.
+     * The controls sit with their table rather than in the toolbar, which keeps the
+     * toolbar to things that act on the whole report (check, pick, delete) and short
+     * enough for one line. Heading, controls and table share one panel so it is plain
+     * which table the controls belong to.
      */
-    private function pageTypeBar(): string
+    private function tablePanel(string $tableId, string $heading, string $tools, string $table): string
     {
-        return "<div class='ptl-table-bar'>"
-            . "<h2>Page Types</h2>"
-            . "<div class='ptl-table-tools'>"
-            . "<button type='button' data-ptl-action='toggle-previews' aria-pressed='false' class='ptl-btn'>"
-            . $this->icon('eye') . " Show Previews</button>"
-            . $this->testedTools('ptl-page-types', 'page types')
-            . "</div></div>";
+        $headingId = $tableId . '-heading';
+
+        return "<section class='ptl-panel' aria-labelledby='{$headingId}'>"
+            . "<div class='ptl-table-bar'>"
+            . "<h2 id='{$headingId}'>" . $this->esc($heading) . "</h2>"
+            . "<div class='ptl-table-tools'>{$tools}</div>"
+            . "</div>{$table}</section>";
+    }
+
+    /**
+     * Buttons that open every link of one kind in the table they sit above, each in a
+     * new tab. The script holds the URLs, keyed by the button's data-ptl-links.
+     *
+     * @param array<string, string> $buttons Link kind => visible label.
+     * @param string $label What the table lists, for the hidden part of the button names.
+     */
+    private function openAllTools(array $buttons, string $label): string
+    {
+        $html = "<div class='ptl-btn-group'>";
+        foreach ($buttons as $links => $text) {
+            $html .= "<button type='button' data-ptl-action='open-all' data-ptl-links='" . $this->esc($links)
+                . "' class='ptl-btn'>" . $this->icon('external') . ' ' . $this->esc($text)
+                . "<span class='ptl-sr-only'> for " . $this->esc($label) . "</span></button>";
+        }
+
+        return $html . "</div>";
     }
 
     /**
@@ -237,8 +260,7 @@ class HtmlReport
      */
     private function pageTypeTable(array $rows): string
     {
-        $html = $this->pageTypeBar()
-            . "<table class='ptl-table' id='ptl-page-types'>"
+        $html = "<table class='ptl-table' id='ptl-page-types'>"
             . "<caption class='ptl-sr-only'>Page types with their CMS and frontend status</caption>"
             . "<thead><tr>"
             . "<th scope='col' class='ptl-tested-col ptl-tested-ui'>Tested</th>"
@@ -254,7 +276,12 @@ class HtmlReport
             $html .= $row->hasPage() ? $this->pageRow($row) : $this->emptyRow($row);
         }
 
-        return $html . "</tbody></table>";
+        $tools = $this->openAllTools(['cms' => 'Open All CMS', 'frontend' => 'Open All Frontend'], 'page types')
+            . "<button type='button' data-ptl-action='toggle-previews' aria-pressed='false' class='ptl-btn'>"
+            . $this->icon('eye') . " Show Previews</button>"
+            . $this->testedTools('ptl-page-types', 'page types');
+
+        return $this->tablePanel('ptl-page-types', 'Page Types', $tools, $html . "</tbody></table>");
     }
 
     private function pageRow(PageTypeRow $row): string
@@ -508,15 +535,183 @@ class HtmlReport
     }
 
     /**
+     * One row per Elemental block type, each checked through one example block.
+     *
+     * The CMS is checked twice because a block appears there twice: as an entry in the
+     * blocks editor on its page, and in its own edit form. Either can fail while the
+     * other works.
+     *
+     * @param BlockTypeRow[] $rows
+     */
+    private function blockTypeTable(array $rows): string
+    {
+        $html = "<table class='ptl-table' id='ptl-block-types'>"
+            . "<caption class='ptl-sr-only'>Elemental block types with their CMS and frontend status</caption>"
+            . "<thead><tr>"
+            . "<th scope='col' class='ptl-tested-col ptl-tested-ui'>Tested</th>"
+            . "<th scope='col'>Block Type</th>"
+            . "<th scope='col'>Count</th>"
+            . "<th scope='col'>CMS Summary</th>"
+            . "<th scope='col'>CMS Edit Form</th>"
+            . "<th scope='col'>Frontend</th>"
+            . "<th scope='col'>Example Block</th>"
+            . "</tr></thead><tbody>";
+
+        foreach ($rows as $row) {
+            $html .= $row->hasElement() ? $this->blockRow($row) : $this->emptyBlockRow($row);
+        }
+
+        $tools = $this->openAllTools(
+            ['block-cms' => 'Open All Edit Forms', 'block-frontend' => 'Open All Frontend'],
+            'block types'
+        ) . $this->testedTools('ptl-block-types', 'block types');
+
+        return $this->tablePanel('ptl-block-types', 'Block Types', $tools, $html . "</tbody></table>");
+    }
+
+    private function blockRow(BlockTypeRow $row): string
+    {
+        $draftOnly = $row->getDraftOnlyCount();
+
+        $count = "<span class='ptl-count'>{$row->liveCount}"
+            . ($draftOnly > 0 ? " <span class='ptl-count-draft'>+ {$draftOnly}</span>" : '')
+            . "<span class='ptl-tip ptl-tip-above'>{$row->liveCount} live, {$draftOnly} draft only</span></span>";
+
+        // The editor has no page of its own, so its link goes to the page it sits on.
+        $editorCell = $this->linkCell(
+            $this->statusPlaceholder("block-editor-status-{$row->index}"),
+            $this->cellLink(
+                $row->pageCmsLink,
+                'Edit Page',
+                "{$row->shortClass} summary in its page's block list",
+                'ptl-cms',
+                'desktop'
+            ),
+            '',
+            ''
+        );
+
+        $formCell = $row->editFormUrl === ''
+            ? "<span class='ptl-url'>&mdash;</span>"
+            : $this->blockFormCell($row);
+
+        $frontendCell = $this->linkCell(
+            $this->statusPlaceholder("block-frontend-status-{$row->index}"),
+            $this->cellLink(
+                $row->frontendUrl,
+                'View Block',
+                "{$row->shortClass} rendered on its own",
+                'ptl-frontend',
+                'desktop'
+            ),
+            '',
+            ''
+        );
+
+        $title = $row->pageLink === ''
+            ? $this->esc($row->title)
+            : "<a href='" . $this->esc($row->pageLink) . "' target='_blank' rel='noopener'>"
+                . $this->esc($row->title) . "</a>";
+
+        return "<tr>"
+            . $this->testedCell($row->class, $row->shortClass)
+            . "<td>" . $this->blockTypeName($row) . "</td>"
+            . "<td>{$count}</td>"
+            . "<td>{$editorCell}</td>"
+            . "<td>{$formCell}</td>"
+            . "<td>{$frontendCell}</td>"
+            . "<td class='ptl-example-cell'><span class='ptl-title'>{$title}</span>"
+            . "<span class='ptl-subtext'>on " . $this->esc($row->pageTitle) . "</span></td>"
+            . "</tr>";
+    }
+
+    /**
+     * The block's edit form, with live and Compare links when a live domain is set.
+     *
+     * As with pages, the live link assumes the live site has the same record IDs, which
+     * holds when the local database is a copy of live.
+     */
+    private function blockFormCell(BlockTypeRow $row): string
+    {
+        $comparing = $this->liveDomain !== '';
+
+        $localLink = $this->cellLink(
+            $row->editFormUrl,
+            $comparing ? 'This CMS' : 'Edit Block',
+            $comparing ? "edit {$row->shortClass} on this site" : "{$row->shortClass} edit form",
+            'ptl-cms',
+            'desktop'
+        );
+
+        $liveLink = '';
+        $compare = '';
+        if ($comparing) {
+            // Escaped on output. The live domain comes from the query string.
+            $liveUrl = $this->liveDomain . '/' . ltrim(Director::makeRelative($row->editFormUrl), '/');
+
+            $liveLink = $this->cellLink(
+                $liveUrl,
+                'Live CMS',
+                "edit {$row->shortClass} on the live site",
+                'ptl-cms',
+                'globe'
+            );
+            $compare = $this->compareButton($row->editFormUrl, $liveUrl, $row->title . ' in the CMS');
+        }
+
+        return $this->linkCell(
+            $this->statusPlaceholder("block-form-status-{$row->index}"),
+            $localLink,
+            $liveLink,
+            $compare
+        );
+    }
+
+    /**
+     * Blocks cannot be created on their own, only on a page, so unlike an empty page
+     * type row there is nothing to offer here.
+     */
+    private function emptyBlockRow(BlockTypeRow $row): string
+    {
+        // Blocks left behind by a deleted page are counted, but cannot be checked.
+        $message = $row->totalCount > 0 ? 'No blocks of this type on a page' : 'No blocks of this type';
+
+        return "<tr>"
+            . $this->testedCell($row->class, $row->shortClass)
+            . "<td>" . $this->blockTypeName($row) . "</td>"
+            . "<td><span class='ptl-count'>{$row->totalCount}</span></td>"
+            . "<td colspan='4' class='ptl-empty-note'>{$message}</td>"
+            . "</tr>";
+    }
+
+    private function blockTypeName(BlockTypeRow $row): string
+    {
+        $name = $row->singularName !== '' && $row->singularName !== $row->shortClass
+            ? "<span class='ptl-subtext'>" . $this->esc($row->singularName) . "</span>"
+            : '';
+
+        return "<span class='ptl-type'>" . $this->esc($row->shortClass) . "</span>{$name}";
+    }
+
+    private function statusPlaceholder(string $id): string
+    {
+        return "<span id='{$id}' class='ptl-status'><span class='ptl-status-placeholder'>?</span></span>";
+    }
+
+    /**
      * @param AdminSection[] $sections
      */
     private function adminTable(array $sections): string
     {
-        $html = "<div class='ptl-table-bar ptl-table-bar-spaced'>"
-            . "<h2>Admin Sections</h2>"
-            . "<div class='ptl-table-tools'>" . $this->testedTools('ptl-admin-sections', 'admin sections') . "</div>"
-            . "</div>"
-            . "<table class='ptl-table' id='ptl-admin-sections'>"
+        $openAll = ['admin' => 'Open All Sections'];
+        foreach ($sections as $section) {
+            if ($section->editLinks) {
+                $openAll['admin-edit'] = 'Open All Edit Forms';
+                break;
+            }
+        }
+
+        $html = "<table class='ptl-table' id='ptl-admin-sections'>"
             . "<caption class='ptl-sr-only'>Admin sections with their status</caption>"
             . "<thead><tr>"
             . "<th scope='col' class='ptl-tested-col ptl-tested-ui'>Tested</th>"
@@ -552,7 +747,10 @@ class HtmlReport
                 . "</tr>";
         }
 
-        return $html . "</tbody></table>";
+        $tools = $this->openAllTools($openAll, 'admin sections')
+            . $this->testedTools('ptl-admin-sections', 'admin sections');
+
+        return $this->tablePanel('ptl-admin-sections', 'Admin Sections', $tools, $html . "</tbody></table>");
     }
 
     private function liveDomainSection(): string
@@ -563,8 +761,8 @@ class HtmlReport
 
         return "<div class='ptl-live-domain-section'>"
             . "<h2>Compare with Live Site</h2>"
-            . "<p>Enter the live site URL to add \"Live CMS\" and \"Live Page\" links for each page type, for "
-            . "comparing an upgraded local or staging site against production. These links are not checked.</p>"
+            . "<p>Enter the live site URL to add \"Live CMS\" and \"Live Page\" links for each page type, "
+            . "and a \"Live CMS\" link for each block's edit form, for comparing an upgraded local or staging site against production. These links are not checked.</p>"
             . "<div class='ptl-live-domain-form'>"
             . "<div class='ptl-field'>"
             . "<label for='ptl-live-domain-input'>Live site URL</label>"
@@ -583,13 +781,17 @@ class HtmlReport
             . "<div class='ptl-help-section'>"
             . "<h3>What it checks</h3>"
             . "<ul>"
-            . "<li><strong>CMS edit form</strong> &ndash; the page's CMS edit URL returns HTTP 200</li>"
+            . "<li><strong>CMS edit form</strong> &ndash; the page's CMS edit URL returns HTTP 200. On pages with "
+            . "Elemental blocks, the block list the blocks editor loads afterwards must return 200 as well</li>"
             . "<li><strong>Frontend</strong> &ndash; the page URL returns its expected status (200, or 404/500 "
             . "for ErrorPage, or a redirect for RedirectorPage)</li>"
             . "<li><strong>Actions</strong> &ndash; where a controller declares <code>\$allowed_actions</code>, "
             . "links beneath the page's own URL are found and checked</li>"
             . "<li><strong>Forms</strong> &ndash; <code>&lt;form&gt;</code> tags in the main content are flagged "
             . "for manual testing</li>"
+            . "<li><strong>Blocks</strong> &ndash; where Elemental is installed, one block of each type can be "
+            . "summarised in its page's block list in the CMS, its CMS edit form returns 200, and it renders on its own "
+            . "with a 200</li>"
             . "</ul></div>"
             . "<div class='ptl-help-section'>"
             . "<h3>What it does not check</h3>"
@@ -605,9 +807,10 @@ class HtmlReport
 
     /**
      * @param PageTypeRow[] $rows
+     * @param BlockTypeRow[] $blockRows
      * @param AdminSection[] $sections
      */
-    private function configPayload(array $rows, array $sections): string
+    private function configPayload(array $rows, array $blockRows, array $sections): string
     {
         $rowData = [];
         foreach ($rows as $row) {
@@ -624,6 +827,24 @@ class HtmlReport
                 'frontendLink' => $row->frontendLink,
                 'expected' => $row->expectedStatus,
                 'actions' => array_values($row->allowedActions),
+                'blockListUrls' => array_values($row->blockListUrls),
+            ];
+        }
+
+        $blockData = [];
+        foreach ($blockRows as $row) {
+            if (!$row->hasElement()) {
+                continue;
+            }
+
+            $blockData[] = [
+                'index' => $row->index,
+                'class' => $row->class,
+                'shortClass' => $row->shortClass,
+                'editorCheckUrl' => $row->editorCheckUrl,
+                'editFormUrl' => $row->editFormUrl,
+                'frontendUrl' => $row->frontendUrl,
+                'frontendNeedsLogin' => $row->frontendNeedsLogin,
             ];
         }
 
@@ -649,6 +870,7 @@ class HtmlReport
             'concurrency' => (int) static::config()->get('check_concurrency'),
             'securityToken' => $this->securityToken(),
             'rows' => $rowData,
+            'blocks' => $blockData,
             'adminSections' => $sectionData,
             'adminEditLinks' => $editData,
         ];

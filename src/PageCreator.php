@@ -93,6 +93,7 @@ class PageCreator
             'pageUrl' => '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
             'allowedActions' => PageTypeCollector::allowedActionsFor($className),
             'expectedStatus' => ExpectedStatus::forShortName($shortName),
+            'blockListUrls' => ElementalSupport::blockListUrlsFor($page),
         ];
     }
 }

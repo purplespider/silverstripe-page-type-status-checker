@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester;
 
 use PurpleSpider\PageTypeTester\Collector\AdminSectionCollector;
+use PurpleSpider\PageTypeTester\Collector\BlockTypeCollector;
 use PurpleSpider\PageTypeTester\Collector\PageTypeCollector;
 use PurpleSpider\PageTypeTester\Report\CliReport;
 use PurpleSpider\PageTypeTester\Report\HtmlReport;
@@ -21,6 +22,7 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * This class only wires things together. The work lives in:
  *  - Collector\PageTypeCollector      finding page types and an example page for each
+ *  - Collector\BlockTypeCollector     finding Elemental block types and an example block for each
  *  - Collector\AdminSectionCollector  finding ModelAdmin sections and their edit forms
  *  - UrlChecker                       performing the HTTP checks
  *  - ActionLinkFinder                 locating URLs for $allowed_actions
@@ -28,6 +30,8 @@ use Symfony\Component\Console\Input\InputOption;
  *  - Report\HtmlReport                the browser report
  *  - PageCreator                      the "create a page of this type" endpoint
  *  - PageDeleter                      the "delete a page this report created" endpoint
+ *  - BlockEditorChecker               the "can this block be listed in the editor" endpoint
+ *  - BlockRenderer                    the "render this block on its own" endpoint
  */
 class PageTypeTesterTask extends BuildTask
 {
@@ -52,6 +56,12 @@ class PageTypeTesterTask extends BuildTask
                 null,
                 InputOption::VALUE_NONE,
                 'Skip checking ModelAdmin sections and SiteConfig'
+            ),
+            new InputOption(
+                'skip-blocks',
+                null,
+                InputOption::VALUE_NONE,
+                'Skip checking Elemental block types'
             ),
             new InputOption(
                 'randomise',
@@ -88,6 +98,18 @@ class PageTypeTesterTask extends BuildTask
             (new PageDeleter())->handle($request, (string) $request->requestVar(PageDeleter::PARAM));
         }
 
+        // These only read, but also answer instead of the report. They name Elemental
+        // classes, so are only reachable where it is installed.
+        if ($request && ElementalSupport::isInstalled()) {
+            if ($request->getVar(BlockEditorChecker::PARAM)) {
+                (new BlockEditorChecker())->handle($request, (string) $request->getVar(BlockEditorChecker::PARAM));
+            }
+
+            if ($request->getVar(BlockRenderer::PARAM)) {
+                (new BlockRenderer())->handle($request, (string) $request->getVar(BlockRenderer::PARAM));
+            }
+        }
+
         // The site name is author-supplied, so escape it before it reaches the console
         // formatter or a title containing angle brackets would be read as a style tag.
         $meta = array_map(
@@ -107,6 +129,7 @@ class PageTypeTesterTask extends BuildTask
     {
         $skipActions = (bool) $input->getOption('skip-actions');
         $skipAdmin = (bool) $input->getOption('skip-admin');
+        $skipBlocks = (bool) $input->getOption('skip-blocks');
         $randomise = (bool) $input->getOption('randomise');
         $liveDomain = $this->sanitiseLiveDomain((string) ($input->getOption('live-domain') ?? ''));
 
@@ -114,6 +137,7 @@ class PageTypeTesterTask extends BuildTask
         $actionFinder = new ActionLinkFinder();
 
         $rows = (new PageTypeCollector($randomise))->collect();
+        $blockRows = $skipBlocks ? [] : (new BlockTypeCollector($randomise))->collect();
         $adminSections = $skipAdmin ? [] : (new AdminSectionCollector())->collect();
 
         $createdPageIds = CreatedPageRegistry::forCurrentRequest()->existing();
@@ -122,9 +146,9 @@ class PageTypeTesterTask extends BuildTask
         $htmlReport->renderHeader($output, $this->getTitle());
 
         $cliReport = new CliReport($checker, $actionFinder, $skipActions);
-        $cliReport->render($output, $rows, $adminSections, $skipAdmin);
+        $cliReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 
-        $htmlReport->render($output, $rows, $adminSections, $skipAdmin);
+        $htmlReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 
         // A checking tool that always succeeds is not much use in a pipeline.
         return $cliReport->hasFailures() ? Command::FAILURE : Command::SUCCESS;

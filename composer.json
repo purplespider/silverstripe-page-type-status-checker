@@ -25,6 +25,9 @@
         "ext-curl": "*",
         "ext-json": "*"
     },
+    "suggest": {
+        "dnadesign/silverstripe-elemental": "Adds a Block Types table, checking each block type in the CMS and on the frontend"
+    },
     "autoload": {
         "psr-4": {
             "PurpleSpider\\PageTypeTester\\": "src/"

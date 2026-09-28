@@ -10,9 +10,10 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Automatically checks HTTP status codes for all links
 - Detects and tests controller `$allowed_actions`
 - Detects forms on pages (flags for manual testing)
+- With [Elemental](https://github.com/silverstripe/silverstripe-elemental) installed, checks one block of each block type: its summary in the CMS block list, its CMS edit form, and how it renders on its own. Also checks each page's block list along with its CMS edit form
 - "Create" buttons to add a test page for any page type that has none, and delete them again afterwards
 - Tick off each page type and admin section as you test it by hand, with a progress count and a filter to hide the ones already done
-- "Open All" buttons to open CMS or frontend links in new tabs
+- "Open All" buttons above each table, to open that table's CMS or frontend links in new tabs
 - Optional page preview thumbnails
 - Randomise selected pages for broader testing
 - Works in both browser and CLI
@@ -50,6 +51,7 @@ The command exits with a non-zero status if any check fails, so it can be used i
 | --- | --- |
 | `--skip-actions` | Skip checking `allowed_actions` URLs |
 | `--skip-admin` | Skip ModelAdmin sections and SiteConfig |
+| `--skip-blocks` | Skip the Elemental block types |
 | `--randomise` | Pick a random example page per type instead of the first |
 | `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare button |
 | `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
@@ -77,10 +79,21 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 - `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
+- On a page with Elemental blocks, the CMS check also requests each of the page's block lists (`admin/elemental-area/api/readElements/{id}`). The edit form itself answers 200 even when its blocks editor cannot load, because the block list is fetched afterwards, so a block that fails there would otherwise go unnoticed.
+
+### Blocks
+
+Each block type is checked through one example block, preferring a published one that sits on a page. All three checks expect a 200.
+
+- **CMS Summary** builds the block's entry in its page's CMS block list, making the same calls the CMS makes, including the block's `getSummary()`, which is what usually fails. A block that throws here stops the whole block list loading. Elemental has no URL that lists a single block, so the task answers this itself. A failure shows the exception message.
+- **CMS Edit Form** requests the block's standalone edit form (`getCMSEditLink(true)`), as opposed to the inline one in the blocks editor.
+- **Frontend** renders the block on its own, through the task, with its page set up as the current page. Elemental's own `/element/{id}` route answers 200 without rendering the block, so it cannot be used. Rendering errors are left to Silverstripe's error handling, so a broken block answers with a real 500, and opening the link in dev mode shows the full error.
+
+The CMS checks, and the frontend of a block that is only in draft, need a CMS login. Like the rest of the task these URLs are open to anyone in dev mode and need ADMIN elsewhere, and they read nothing in draft without CMS access.
 
 ## Comparing against the live site
 
-Setting a live domain adds a "Live CMS" and "Live Page" link beside each local link, and a **Compare** button after each pair. Compare opens the local and live version of the same thing in two windows, side by side, half the screen each.
+Setting a live domain adds a "Live CMS" and "Live Page" link beside each page type's local links, and a "Live CMS" link beside each block type's edit form, with a **Compare** button after each pair. The live links reuse the local record IDs, so they are only right when the local database is a copy of live. Compare opens the local and live version of the same thing in two windows, side by side, half the screen each.
 
 ### Why do the live CMS links ask me to log in? (Silverstripe 6+)
 
@@ -99,7 +112,7 @@ Otherwise, just log in when you land there - the redirect carries a `BackURL`, s
 
 ## Tracking what you have tested
 
-The status checks only prove a page responds. Each page type and admin section also has a **Tested** checkbox for marking it once you have been through it by hand. Each table shows how many are done and has its own **Hide Tested** button, which leaves only the ones still to do. Hovering the date under a tick shows exactly when it was ticked.
+The status checks only prove a page responds. Each page type, block type and admin section also has a **Tested** checkbox for marking it once you have been through it by hand. Each table shows how many are done and has its own **Hide Tested** button, which leaves only the ones still to do. Hovering the date under a tick shows exactly when it was ticked.
 
 Ticks are per page type rather than per page, so they survive Randomise picking a different example. Types with no pages can be ticked too, for example once you have created one and checked it, or decided the type is unused. They are stored in your browser's local storage, which means:
 

@@ -267,19 +267,36 @@ p.ptl-desc {
     margin-left: auto;
 }
 
-/* Table heading with its view controls, matching the Admin Sections caption. */
+/*
+ * A table with its heading and controls, in one panel. The heading bar sits flush on
+ * the table, and panels are spaced well apart, so the controls read as belonging to
+ * the table below them rather than floating between two.
+ */
+.ptl-panel {
+    min-width: 900px;
+    background: var(--ptl-surface);
+    border: 1px solid var(--ptl-border);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.ptl-panel + .ptl-panel {
+    margin-top: 40px;
+}
+
+.ptl-panel .ptl-table {
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .ptl-table-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px 20px;
-    margin-bottom: 16px;
-}
-
-/* A second table, set apart from the one above. */
-.ptl-table-bar-spaced {
-    margin-top: 30px;
+    padding: 14px 20px;
 }
 
 .ptl-table-bar h2 {
@@ -520,6 +537,16 @@ p.ptl-desc {
     color: #00497a;
 }
 
+/* An example block's title, linking to it on its page. Frontend colour, title weight. */
+.ptl-table .ptl-title a {
+    color: var(--ptl-primary-dark);
+    text-decoration: underline;
+}
+
+.ptl-table .ptl-title a:hover {
+    color: #00497a;
+}
+
 /*
  * Link cells
  *
@@ -577,6 +604,21 @@ p.ptl-desc {
     font-weight: 600;
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
     font-size: 14px;
+}
+
+/* A muted second line: a block type's CMS name, or the page an example block is on. */
+.ptl-subtext {
+    color: var(--ptl-muted);
+    font-size: 12px;
+    display: block;
+    margin-top: 2px;
+}
+
+/* A block type with no example block to check. */
+.ptl-table td.ptl-empty-note {
+    color: var(--ptl-muted);
+    font-size: 14px;
+    text-align: center;
 }
 
 .ptl-title {

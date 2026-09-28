@@ -15,6 +15,7 @@ class PageTypeRow
     /**
      * @param string[] $allowedActions
      * @param int[] $expectedStatus
+     * @param string[] $blockListUrls The page's Elemental block lists, checked with its CMS URL.
      */
     public function __construct(
         public readonly string $class,
@@ -28,7 +29,8 @@ class PageTypeRow
         public readonly string $title = '',
         public readonly string $cmsLink = '',
         public readonly string $frontendLink = '',
-        public readonly string $pageUrl = ''
+        public readonly string $pageUrl = '',
+        public readonly array $blockListUrls = []
     ) {
     }
 
