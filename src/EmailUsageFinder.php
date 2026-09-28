@@ -94,6 +94,65 @@ class EmailUsageFinder
      */
     public function forPageType(string $class): array
     {
+        return $this->safely(fn () => $this->findForPageType($class));
+    }
+
+    /**
+     * @return EmailUsage[]
+     */
+    public function forBlockType(string $class): array
+    {
+        return $this->safely(fn () => $this->findForBlockType($class));
+    }
+
+    /**
+     * The admin's own code, such as an import or export that emails someone. The records
+     * it manages are read separately, with forModel(), so each is reported by its own
+     * edit form, and are not followed from here, where naming them in managed_models
+     * would otherwise report them twice.
+     *
+     * @param string[] $modelClasses The records it manages.
+     * @return EmailUsage[]
+     */
+    public function forAdmin(string $adminClass, array $modelClasses = []): array
+    {
+        return $this->safely(
+            fn () => $this->find($this->chain($adminClass, [ModelAdmin::class]), $modelClasses)
+        );
+    }
+
+    /**
+     * A record's code, such as a notification sent from onAfterWrite().
+     *
+     * @return EmailUsage[]
+     */
+    public function forModel(string $class): array
+    {
+        return $this->safely(fn () => $this->find($this->chain($class, [DataObject::class])));
+    }
+
+    /**
+     * Runs one lookup, answering nothing found if it fails. Finding email is a hint on
+     * top of the report's checks, so a class it cannot read, such as one whose parent
+     * is missing, costs that row its email entries rather than the whole report.
+     *
+     * @param callable(): EmailUsage[] $lookup
+     * @return EmailUsage[]
+     */
+    private function safely(callable $lookup): array
+    {
+        try {
+            return $lookup();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return EmailUsage[]
+     */
+    private function findForPageType(string $class): array
+    {
         $isBase = strcasecmp($class, Page::class) === 0;
         $controllerStops = ['PageController', ContentController::class];
 
@@ -112,7 +171,7 @@ class EmailUsageFinder
     /**
      * @return EmailUsage[]
      */
-    public function forBlockType(string $class): array
+    private function findForBlockType(string $class): array
     {
         $classes = $this->chain($class, [BaseElement::class]);
 
@@ -122,30 +181,6 @@ class EmailUsageFinder
         }
 
         return $this->find($classes);
-    }
-
-    /**
-     * The admin's own code, such as an import or export that emails someone. The records
-     * it manages are read separately, with forModel(), so each is reported by its own
-     * edit form, and are not followed from here, where naming them in managed_models
-     * would otherwise report them twice.
-     *
-     * @param string[] $modelClasses The records it manages.
-     * @return EmailUsage[]
-     */
-    public function forAdmin(string $adminClass, array $modelClasses = []): array
-    {
-        return $this->find($this->chain($adminClass, [ModelAdmin::class]), $modelClasses);
-    }
-
-    /**
-     * A record's code, such as a notification sent from onAfterWrite().
-     *
-     * @return EmailUsage[]
-     */
-    public function forModel(string $class): array
-    {
-        return $this->find($this->chain($class, [DataObject::class]));
     }
 
     /**
