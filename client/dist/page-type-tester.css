@@ -1301,6 +1301,14 @@ button.ptl-status-login {
     border-color: #6c757d;
 }
 
+/*
+ * Its pale blue is as light as the tested tint, so it gets a border there, 3.2:1 on
+ * the tint. Hovering still darkens the border, as it does elsewhere.
+ */
+.ptl-table tbody tr.ptl-is-tested .ptl-compare-btn:not(:hover) {
+    border-color: #5689b8;
+}
+
 .ptl-table.ptl-hide-tested tr.ptl-is-tested {
     display: none;
 }
