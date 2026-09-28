@@ -26,8 +26,7 @@
         notLoggedIn: false,
         checksHaveRun: false,
         checksIncludedActions: false,
-        liveDomain: config.liveDomain || '',
-        totals: { passed: 0, failed: 0, manual: 0, login: 0 }
+        liveDomain: config.liveDomain || ''
     };
 
     var rows = config.rows.slice();
@@ -209,18 +208,21 @@
 
     /* counting */
 
-    function resetTotals() {
-        state.totals = { passed: 0, failed: 0, manual: 0, login: 0 };
-    }
-
-    function recordResult(result, expected) {
-        if (result.loginRequired) {
-            state.totals.login++;
-        } else if (expected.indexOf(result.status) !== -1 && !result.problem) {
-            state.totals.passed++;
-        } else {
-            state.totals.failed++;
+    /**
+     * Counted from the badges on screen rather than kept as running totals, so a
+     * re-check, or a row created or deleted, cannot leave the summary behind them.
+     */
+    function countResults() {
+        function count(selector) {
+            return document.querySelectorAll(selector).length;
         }
+
+        return {
+            passed: count('.ptl-status-badge.ptl-status-pass'),
+            failed: count('.ptl-status-badge.ptl-status-fail, .ptl-status-badge.ptl-status-redirect'),
+            login: count('.ptl-status-badge.ptl-status-login'),
+            manual: count('[data-ptl-manual]')
+        };
     }
 
     function updateSummary(stopped) {
@@ -229,7 +231,7 @@
             return;
         }
 
-        var t = state.totals;
+        var t = countResults();
         var parts = [];
         var background;
         var colour;
@@ -484,7 +486,8 @@
                 : 'A form was detected on this page. Check it manually.';
 
             return '<span class="ptl-status"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"'
-                + ' class="ptl-form-badge">' + icon('document') + ' ' + badge
+                + ' class="ptl-form-badge"' + (actions.length ? ' data-ptl-manual' : '') + '>'
+                + icon('document') + ' ' + badge
                 + '<span class="ptl-sr-only">: ' + escapeHtml(label) + '. ' + opens + '</span>'
                 + '<span class="ptl-tip ptl-tip-above" aria-hidden="true">' + escapeHtml(tip)
                 + ' ' + opens + '</span></a></span>'
@@ -561,7 +564,7 @@
                     + '<a href="' + escapeHtml(foundLinks[action]) + '" target="_blank" rel="noopener"'
                     + ' class="ptl-action">/' + escapeHtml(action) + '</a>';
             } else {
-                html += '<span class="ptl-status"><span class="ptl-check-badge">' + icon('warning')
+                html += '<span class="ptl-status"><span class="ptl-check-badge" data-ptl-manual>' + icon('warning')
                     + ' check<span class="ptl-tip ptl-tip-above">No link to this action was found on the page.'
                     + ' Visit the page and check it manually.</span></span></span>'
                     + '<span class="ptl-action-missing">/' + escapeHtml(action) + '</span>';
@@ -597,14 +600,12 @@
     async function checkAction(row, action, url) {
         var span = el('action-status-' + row.index + '-' + action);
         if (!span) {
-            return false;
+            return;
         }
 
         var result = await checkLink(url, true);
         result.problem = findContentProblem(result, false);
         span.innerHTML = statusBadge(result, [200], 'action:' + row.index + ':' + action);
-
-        return result.status === 200 && !result.problem;
     }
 
     /* row checks */
@@ -644,8 +645,6 @@
 
         span.innerHTML = statusBadge(result, [200], 'cms:' + row.index);
         renderScreenFailures(span, screenFailures);
-        recordResult(result, [200]);
-        state.totals.failed += screenFailures.length;
 
         await checkGridForms(row, formLoaded);
     }
@@ -699,7 +698,6 @@
         }
 
         span.innerHTML = statusBadge(result, [200], 'grid:' + row.index + ':' + g + ':' + f);
-        recordResult(result, [200]);
 
         if (updateSummary) {
             updateGridSummary(row, false);
@@ -832,7 +830,6 @@
         }
 
         span.innerHTML = statusBadge(result, row.expected, 'frontend:' + row.index);
-        recordResult(result, row.expected);
 
         renderForms(row, result.html ? detectForms(result.html) : []);
 
@@ -845,7 +842,6 @@
             return;
         }
 
-        // Form actions are left out, so they count as manual checks in the loop below.
         var foundLinks = findActionLinks(result.html, linkActions(row), row.frontendLink);
         renderActionLinks(row, foundLinks);
 
@@ -856,17 +852,10 @@
 
             var action = row.actions[i];
             if (foundLinks[action]) {
-                var passed = await checkAction(row, action, foundLinks[action]);
-                if (passed) {
-                    state.totals.passed++;
-                } else {
-                    state.totals.failed++;
-                }
+                await checkAction(row, action, foundLinks[action]);
                 if (onActionChecked) {
                     onActionChecked();
                 }
-            } else {
-                state.totals.manual++;
             }
         }
     }
@@ -886,7 +875,6 @@
         }
 
         span.innerHTML = statusBadge(result, [200], 'admin:' + section.index);
-        recordResult(result, [200]);
     }
 
     async function checkAdminEditCell(link) {
@@ -904,7 +892,6 @@
         }
 
         span.innerHTML = statusBadge(result, [200], 'admin-edit:' + link.index);
-        recordResult(result, [200]);
     }
 
     /**
@@ -938,7 +925,6 @@
         }
 
         span.innerHTML = statusBadge(result, [200], 'block-' + kind + ':' + block.index);
-        recordResult(result, [200]);
     }
 
     // The editor check says what went wrong in a JSON body.
@@ -973,7 +959,6 @@
         state.checking = true;
         state.stopRequested = false;
         state.hoveringStop = false;
-        resetTotals();
 
         inactiveBtn.disabled = true;
         activeBtn.classList.add('ptl-checking');
@@ -1443,7 +1428,6 @@
                 return;
             }
 
-            releaseRowTotals(rowEl);
             blocks = blocks.filter(function (b) {
                 return b.index !== blockIndex;
             });
@@ -1493,7 +1477,6 @@
                 return;
             }
 
-            releaseRowTotals(rowEl);
             dropRow(rowIndex);
 
             if (rowData) {
@@ -1595,26 +1578,6 @@
 
         count.textContent = createdPageIds.length;
         wrap.hidden = createdPageIds.length === 0;
-    }
-
-    /**
-     * Takes a row's results back out of the running totals before its cells are
-     * replaced, so the summary still matches what is on screen.
-     */
-    function releaseRowTotals(row) {
-        row.querySelectorAll('.ptl-status-badge').forEach(function (badge) {
-            if (badge.classList.contains('ptl-status-pass')) {
-                state.totals.passed = Math.max(0, state.totals.passed - 1);
-            } else if (badge.classList.contains('ptl-status-login')) {
-                state.totals.login = Math.max(0, state.totals.login - 1);
-            } else {
-                state.totals.failed = Math.max(0, state.totals.failed - 1);
-            }
-        });
-
-        row.querySelectorAll('.ptl-check-badge').forEach(function () {
-            state.totals.manual = Math.max(0, state.totals.manual - 1);
-        });
     }
 
     function dropRow(index) {
@@ -2171,21 +2134,13 @@
 
         renderForms(row, detectForms(result.html));
 
-        // Form actions are left out, so they count as manual checks in the loop below.
         var foundLinks = findActionLinks(result.html, linkActions(row), row.frontendLink);
         renderActionLinks(row, foundLinks);
 
         for (var i = 0; i < row.actions.length; i++) {
             var action = row.actions[i];
             if (foundLinks[action]) {
-                var passed = await checkAction(row, action, foundLinks[action]);
-                if (passed) {
-                    state.totals.passed++;
-                } else {
-                    state.totals.failed++;
-                }
-            } else {
-                state.totals.manual++;
+                await checkAction(row, action, foundLinks[action]);
             }
         }
 
