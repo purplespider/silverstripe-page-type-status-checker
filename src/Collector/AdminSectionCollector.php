@@ -4,14 +4,21 @@ namespace PurpleSpider\PageTypeTester\Collector;
 
 use PurpleSpider\PageTypeTester\Model\AdminEditLink;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
+use ReflectionProperty;
 use SilverStripe\Admin\ModelAdmin;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
+use SilverStripe\Control\HTTPRequest;
+use SilverStripe\Control\Session;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Injector\Injector;
+use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldDetailForm;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Security;
+use SilverStripe\View\Requirements;
+use SilverStripe\View\Requirements_Backend;
 use Throwable;
 
 /**
@@ -56,7 +63,7 @@ class AdminSectionCollector
                 'ModelAdmin',
                 Controller::join_links($baseUrl, 'admin', $urlSegment),
                 $index++,
-                $this->editLinksFor($adminClass, $urlSegment, $baseUrl, $editIndex)
+                $this->editLinksFor($adminClass, $editIndex)
             );
         }
 
@@ -73,40 +80,44 @@ class AdminSectionCollector
     /**
      * @return AdminEditLink[]
      */
-    private function editLinksFor(string $adminClass, string $urlSegment, string $baseUrl, int &$editIndex): array
+    private function editLinksFor(string $adminClass, int &$editIndex): array
     {
-        $managedModels = Config::inst()->get($adminClass, 'managed_models');
-        if (!$managedModels || !is_array($managedModels)) {
+        // Admins that work out their tabs at runtime rather than from config, such as
+        // ArchiveAdmin with a tab per versioned class, are not checked record by record.
+        if (!Config::inst()->get($adminClass, 'managed_models')) {
+            return [];
+        }
+
+        try {
+            $managedModels = Injector::inst()->get($adminClass)->getManagedModels();
+        } catch (Throwable) {
             return [];
         }
 
         $links = [];
-        foreach ($managedModels as $key => $value) {
-            [$tabKey, $dataClass] = $this->resolveManagedModel($key, $value);
-
-            if (!$dataClass || !class_exists($dataClass)) {
+        foreach ($managedModels as $tab => $spec) {
+            $dataClass = $spec['dataClass'] ?? $tab;
+            if (!class_exists($dataClass)) {
                 continue;
             }
 
-            $record = DataObject::get($dataClass)->first();
-            if (!$record) {
+            $grid = $this->gridFieldFor($adminClass, $tab, $dataClass);
+
+            // No detail form means the grid has no edit screens to check.
+            if (!$grid || !$grid->getConfig()->getComponentByType(GridFieldDetailForm::class)) {
                 continue;
             }
 
-            $sanitisedTab = str_replace('\\', '-', $tabKey);
+            // Taken from the grid's own list rather than the model's table, as the grid
+            // 404s any record it does not list itself (e.g. a filtered getList()).
+            $record = $grid->getList()->first();
+            if (!$record instanceof DataObject) {
+                continue;
+            }
 
             $links[] = new AdminEditLink(
                 ClassInfo::shortName($dataClass),
-                Controller::join_links(
-                    $baseUrl,
-                    'admin',
-                    $urlSegment,
-                    $sanitisedTab,
-                    'EditForm/field',
-                    $sanitisedTab,
-                    'item',
-                    $record->ID
-                ),
+                Director::absoluteURL($grid->Link('item/' . $record->ID)),
                 (string) ($record->getTitle() ?: '(untitled)'),
                 $editIndex++
             );
@@ -116,26 +127,49 @@ class AdminSectionCollector
     }
 
     /**
-     * managed_models accepts several shapes: a plain list of class names, a map of tab
-     * key to class name, or a map of tab key to a config array containing dataClass.
+     * Builds the tab's real edit form and returns its GridField, so the edit link is
+     * built from whatever the admin actually uses. Admins are free to replace or rename
+     * the default GridField (QueuedJobsAdmin does both), and guessing its URL reports
+     * those edit screens as 404s.
      *
-     * @return array{0: string|null, 1: string|null}
+     * Returns null where the form cannot be built outside a CMS request, in which case
+     * the tab's edit link is skipped rather than guessed.
      */
-    private function resolveManagedModel(int|string $key, mixed $value): array
+    private function gridFieldFor(string $adminClass, string $tab, string $dataClass): ?GridField
     {
-        if (is_string($value)) {
-            return is_int($key) ? [$value, $value] : [$key, $value];
+        /** @var ModelAdmin $admin */
+        $admin = Injector::inst()->create($adminClass);
+
+        // What ModelAdmin::init() sets from the URL's ModelClass param. init() itself is
+        // not run, as LeftAndMain's version loads the CMS UI and can redirect.
+        (new ReflectionProperty(ModelAdmin::class, 'modelTab'))->setValue($admin, $tab);
+        (new ReflectionProperty(ModelAdmin::class, 'modelClass'))->setValue($admin, $dataClass);
+
+        // A fresh GET request, so none of this task's query string reaches the admin,
+        // but with the current session, which pushCurrent() requires.
+        $request = new HTTPRequest('GET', '/');
+        $currentRequest = Controller::curr()?->getRequest();
+        $request->setSession($currentRequest?->hasSession() ? $currentRequest->getSession() : new Session([]));
+        $admin->setRequest($request);
+
+        // Anything the form requires would otherwise end up in this report's page.
+        $requirements = Requirements::backend();
+        Requirements::set_backend(Requirements_Backend::create());
+
+        $admin->pushCurrent();
+        try {
+            $fields = $admin->getEditForm()->Fields()->dataFields();
+        } catch (Throwable) {
+            return null;
+        } finally {
+            $admin->popCurrent();
+            Requirements::set_backend($requirements);
         }
 
-        if (is_array($value)) {
-            if (isset($value['dataClass'])) {
-                return [is_int($key) ? $value['dataClass'] : $key, $value['dataClass']];
-            }
+        $grids = array_filter($fields, fn ($field) => $field instanceof GridField);
 
-            return is_int($key) ? [null, null] : [$key, $key];
-        }
-
-        return [null, null];
+        // Prefer ModelAdmin's default field, in case the form has more than one grid.
+        return $grids[str_replace('\\', '-', $tab)] ?? reset($grids) ?: null;
     }
 
     private function canView(string $adminClass): bool
