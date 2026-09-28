@@ -7,7 +7,6 @@ PurpleSpider\PageTypeTester\ActionLinkFinder:
   # page type exposes a parameterless action that is not linked from the page itself.
   direct_actions:
     - rss
-    - index
 
 PurpleSpider\PageTypeTester\Report\HtmlReport:
   # How many checks the browser report runs at once. Lower this if the site being

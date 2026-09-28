@@ -67,7 +67,15 @@ class PageTypeCollector
         $allowed = [];
         foreach ($actions as $key => $value) {
             // Both ['action'] and ['action' => 'PERMISSION'] forms are valid.
-            $allowed[] = is_int($key) ? $value : $key;
+            $action = is_int($key) ? $value : $key;
+
+            // index is the page itself, which the frontend check already covers.
+            // RedirectorPageController lists it, and its page has no HTML to search.
+            if (strtolower($action) === 'index') {
+                continue;
+            }
+
+            $allowed[] = $action;
         }
 
         return $allowed;

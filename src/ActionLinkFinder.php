@@ -21,14 +21,15 @@ class ActionLinkFinder
      *
      * @config
      */
-    private static array $direct_actions = ['rss', 'index'];
+    private static array $direct_actions = ['rss'];
 
     /**
      * @return string[]
      */
     public static function getDirectActions(): array
     {
-        return (array) Config::inst()->get(self::class, 'direct_actions');
+        // Config merges the YAML's list onto the default, repeating any shared entries.
+        return array_values(array_unique((array) Config::inst()->get(self::class, 'direct_actions')));
     }
 
     /**
