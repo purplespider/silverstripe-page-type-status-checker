@@ -12,8 +12,14 @@ class CheckResult
         public readonly int $status,
         public readonly string $body = '',
         public readonly bool $loginRequired = false,
-        public readonly string $redirectUrl = ''
+        public readonly string $redirectUrl = '',
+        public readonly string $contentType = ''
     ) {
+    }
+
+    public function isHtml(): bool
+    {
+        return str_contains(strtolower($this->contentType), 'html');
     }
 
     public function isRedirect(): bool

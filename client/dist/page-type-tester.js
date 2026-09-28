@@ -78,7 +78,13 @@
                 status = 302;
             }
 
-            var result = { status: status, loginRequired: false, html: '', body: '' };
+            var result = {
+                status: status,
+                loginRequired: false,
+                html: '',
+                body: '',
+                contentType: (response.headers.get('Content-Type') || '').toLowerCase()
+            };
             if (wantHtml && response.status === 200) {
                 result.html = await response.text();
             }
@@ -88,7 +94,7 @@
 
             return result;
         } catch (e) {
-            return { status: 0, loginRequired: false, html: '', body: '' };
+            return { status: 0, loginRequired: false, html: '', body: '', contentType: '' };
         }
     }
 
@@ -106,12 +112,12 @@
         }
     }
 
-    async function checkCmsLink(url, wantErrorBody) {
+    async function checkCmsLink(url, wantErrorBody, wantHtml) {
         if (state.notLoggedIn) {
-            return { status: 302, loginRequired: true, html: '', body: '' };
+            return { status: 302, loginRequired: true, html: '', body: '', contentType: '' };
         }
 
-        var result = await checkLink(url, false, wantErrorBody);
+        var result = await checkLink(url, wantHtml, wantErrorBody);
 
         if (result.status >= 300 && result.status < 400 && await isLoginRedirect(url)) {
             markNotLoggedIn();
@@ -140,6 +146,11 @@
             label = 'login';
             className = 'ptl-status-login';
             glyph = icon('lock');
+        } else if (result.problem && expected.indexOf(result.status) !== -1) {
+            // The right status, but the content shows it did not really work.
+            label = String(result.status);
+            className = 'ptl-status-fail';
+            glyph = icon('warning');
         } else if (expected.indexOf(result.status) !== -1) {
             label = String(result.status);
             className = 'ptl-status-pass';
@@ -156,15 +167,35 @@
 
         // A note says more than the status alone, such as which request failed or the
         // error it gave.
+        var explanation = result.loginRequired ? '' : result.note || problemNote(result);
         var description = result.loginRequired
             ? 'Redirected to the CMS login page. Log in, then re-check.'
-            : result.note || 'Responded with ' + label + '.';
+            : explanation || 'Responded with ' + label + '.';
+
+        // An explanation is why a badge is not what its status suggests, such as a red
+        // 200, so it gets a tip that shows at once and on focus. A title would be slow
+        // to appear and never shows for the keyboard.
+        var tip = explanation ? tipHtml(description + ' Click to re-check.') : '';
 
         return '<button type="button" class="ptl-status-badge ' + className + '"'
             + ' data-ptl-action="recheck" data-ptl-target="' + escapeHtml(target) + '"'
             + ' aria-label="' + escapeHtml(description + ' Activate to re-check.') + '"'
-            + ' title="' + escapeHtml(description + ' Click to re-check.') + '">'
-            + escapeHtml(label) + glyph + '</button>';
+            + (tip ? '' : ' title="' + escapeHtml(description + ' Click to re-check.') + '"') + '>'
+            + escapeHtml(label) + glyph + tip + '</button>';
+    }
+
+    // Hidden from assistive technology, which gets the same text from the label.
+    function tipHtml(text) {
+        return '<span class="ptl-tip ptl-tip-above ptl-tip-text" aria-hidden="true">' + escapeHtml(text) + '</span>';
+    }
+
+    function problemNote(result) {
+        if (!result.problem) {
+            return '';
+        }
+
+        return 'Responded with ' + statusLabel(result.status) + ', but '
+            + result.problem.charAt(0).toLowerCase() + result.problem.slice(1) + '.';
     }
 
     function statusLabel(status) {
@@ -184,7 +215,7 @@
     function recordResult(result, expected) {
         if (result.loginRequired) {
             state.totals.login++;
-        } else if (expected.indexOf(result.status) !== -1) {
+        } else if (expected.indexOf(result.status) !== -1 && !result.problem) {
             state.totals.passed++;
         } else {
             state.totals.failed++;
@@ -259,6 +290,109 @@
         }
 
         await Promise.all(workers);
+    }
+
+    /* content */
+
+    /**
+     * Mirrors ContentProblemFinder in PHP: signs in a 200 response that it did not
+     * really work. Returns a description of the first problem found, or ''.
+     *
+     * isDocument is true for a whole page, which should also have a title and end
+     * properly. Actions and blocks are only searched for error output and unrendered
+     * code.
+     */
+    function findContentProblem(result, isDocument) {
+        if (result.status !== 200 || !result.html || result.contentType.indexOf('html') === -1) {
+            return '';
+        }
+
+        return errorOutput(result.html)
+            || unrenderedCode(result.html)
+            || (isDocument ? documentProblem(result.html) : '');
+    }
+
+    function errorOutput(html) {
+        // Silverstripe's own error view, e.g. <h1>[Warning] Undefined variable $x</h1>.
+        var match = html.match(/<div class="header info [a-z]+"><h1>\[([^\]]+)\]\s*([\s\S]*?)<\/h1>/);
+        if (match) {
+            return 'Shows a PHP ' + match[1] + ': ' + excerpt(match[2]);
+        }
+
+        // Debug::message() and Debug::show() left in the code.
+        match = html.match(/<b>Debug \(line (\d+) of ([^)]+)\):<\/b>/);
+        if (match) {
+            return 'Shows debug output from ' + match[2].split(/[\\/]/).pop() + ' line ' + match[1];
+        }
+
+        // PHP's own error display, with and without html_errors.
+        match = html.match(/(?:<b>)?(Fatal error|Parse error|Warning|Notice|Deprecated)(?:<\/b>)?:\s+(.+?) in (?:<b>)?\S+?(?:<\/b>)? on line (?:<b>)?\d+/);
+        if (match) {
+            return 'Shows a PHP ' + match[1] + ': ' + excerpt(match[2]);
+        }
+
+        return '';
+    }
+
+    function unrenderedCode(html) {
+        // Scripts, styles, comments and code samples are expected to hold template
+        // syntax, and would only be a false alarm.
+        var markup = html
+            .replace(/<!--[\s\S]*?-->/g, '')
+            .replace(/<(script|style|template|textarea|pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+
+        // Template control blocks, raw or escaped: <% if $Foo %>, &lt;% loop %&gt;.
+        var match = markup.match(/(?:<|&lt;)%-?\s*(?:if|else_if|else|end_[a-z]+|loop|with|include|require|base_tag|cached|uncached|_t)\b[\s\S]*?%(?:>|&gt;)/);
+        if (match) {
+            return 'Shows unrendered template code: ' + excerpt(match[0]);
+        }
+
+        // A bare $Title is left out: it also matches prices and copy like "$Millions".
+        match = markup.match(/\{\$[A-Z]\w*(?:\.\w+)*\}/);
+        if (match) {
+            return 'Shows unrendered template code: ' + match[0];
+        }
+
+        // Shortcodes that were never parsed, usually a link or image in the content.
+        match = markup.match(/\[(?:sitetree_link|file_link|image|embed)[\s,]+\w+\s*=[^\]]*\]/i);
+        if (match) {
+            return 'Shows an unparsed shortcode: ' + excerpt(match[0]);
+        }
+
+        return '';
+    }
+
+    function documentProblem(html) {
+        // Something that is not a whole HTML document has no title or end to check.
+        if (!/<html[\s>]/i.test(html)) {
+            return '';
+        }
+
+        if (!/<\/html\s*>/i.test(html)) {
+            return 'Stops before </html>, so the page may have been cut off';
+        }
+
+        var match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (!match) {
+            return 'Has no <title>';
+        }
+
+        if (!textOf(match[1]).trim()) {
+            return 'Has an empty <title>';
+        }
+
+        return '';
+    }
+
+    // The text of some markup, decoded. DOMParser documents are inert, so nothing in
+    // the markup runs or loads.
+    function textOf(markup) {
+        return new DOMParser().parseFromString(markup, 'text/html').documentElement.textContent || '';
+    }
+
+    function excerpt(markup) {
+        var text = textOf(markup).replace(/\s+/g, ' ').trim();
+        return text.length > 160 ? text.slice(0, 157) + '...' : text;
     }
 
     /* forms */
@@ -465,10 +599,11 @@
             return false;
         }
 
-        var result = await checkLink(url, false);
+        var result = await checkLink(url, true);
+        result.problem = findContentProblem(result, false);
         span.innerHTML = statusBadge(result, [200], 'action:' + row.index + ':' + action);
 
-        return result.status === 200;
+        return result.status === 200 && !result.problem;
     }
 
     /* row checks */
@@ -497,13 +632,84 @@
             }
         }
 
+        var screenFailures = result.status === 200 && !result.loginRequired ? await checkCmsScreens(row) : [];
+
         if (state.stopRequested) {
             span.innerHTML = '';
+            renderScreenFailures(span, []);
             return;
         }
 
         span.innerHTML = statusBadge(result, [200], 'cms:' + row.index);
+        renderScreenFailures(span, screenFailures);
         recordResult(result, [200]);
+        state.totals.failed += screenFailures.length;
+    }
+
+    // On a line of their own under the cell, so they do not push its link aside.
+    function renderScreenFailures(span, failures) {
+        var cell = span.closest('td');
+        var holder = cell.querySelector('.ptl-screen-badges');
+
+        if (!failures.length) {
+            if (holder) {
+                holder.remove();
+            }
+            return;
+        }
+
+        if (!holder) {
+            holder = document.createElement('div');
+            holder.className = 'ptl-screen-badges';
+            cell.appendChild(holder);
+        }
+
+        holder.innerHTML = failures.map(screenBadge).join('');
+    }
+
+    /**
+     * The page's Settings and History screens. They work far more often than not, so
+     * only a failure is shown, as a small badge under the edit form's own.
+     */
+    async function checkCmsScreens(row) {
+        var checks = row.cmsScreenChecks || [];
+        var failures = [];
+        var failed = {};
+
+        for (var i = 0; i < checks.length && !state.stopRequested; i++) {
+            var check = checks[i];
+
+            // History is two requests under one label, and one failure says enough.
+            if (failed[check.label]) {
+                continue;
+            }
+
+            var result = await checkCmsLink(check.url, true);
+            if (result.loginRequired || result.status === 200) {
+                continue;
+            }
+
+            failed[check.label] = true;
+            failures.push({ check: check, result: result });
+        }
+
+        return failures;
+    }
+
+    // A link rather than a re-check button, as the screen is what needs looking at. The
+    // edit form's badge above it re-checks the whole cell.
+    function screenBadge(failure) {
+        var label = failure.check.label + ' ' + statusLabel(failure.result.status);
+        var error = blockErrorNote(failure.result);
+        var description = 'The ' + failure.check.label + ' screen '
+            + (error ? error.charAt(0).toLowerCase() + error.slice(1) : 'responded with '
+                + statusLabel(failure.result.status)) + '.';
+
+        return '<a href="' + escapeHtml(failure.check.link) + '" target="_blank" rel="noopener"'
+            + ' class="ptl-status-badge ptl-status-fail ptl-screen-badge">'
+            + icon('cross') + escapeHtml(label)
+            + '<span class="ptl-sr-only">. ' + escapeHtml(description) + '</span>'
+            + tipHtml(description + ' Click to open.') + '</a>';
     }
 
     async function checkFrontendCell(row, includeActions, onActionChecked) {
@@ -514,6 +720,7 @@
 
         span.innerHTML = placeholder('...');
         var result = await checkLink(row.frontendLink, true);
+        result.problem = findContentProblem(result, true);
 
         if (state.stopRequested) {
             span.innerHTML = '';
@@ -613,11 +820,12 @@
             result.note = blockErrorNote(result);
         } else if (kind === 'form') {
             result = await checkCmsLink(block.editFormUrl);
-        } else if (block.frontendNeedsLogin) {
-            // A draft block can only be rendered for somebody logged in to the CMS.
-            result = await checkCmsLink(block.frontendUrl);
         } else {
-            result = await checkLink(block.frontendUrl, false);
+            // A draft block can only be rendered for somebody logged in to the CMS.
+            result = block.frontendNeedsLogin
+                ? await checkCmsLink(block.frontendUrl, false, true)
+                : await checkLink(block.frontendUrl, true);
+            result.problem = findContentProblem(result, false);
         }
 
         if (state.stopRequested) {
@@ -820,7 +1028,8 @@
                 frontendLink: result.frontendLink,
                 expected: result.expectedStatus,
                 actions: result.allowedActions || [],
-                blockListUrls: result.blockListUrls || []
+                blockListUrls: result.blockListUrls || [],
+                cmsScreenChecks: result.cmsScreenChecks || []
             };
             rows.push(newRow);
             rememberCreatedPage(result.id);
@@ -1654,7 +1863,9 @@
             'block-cms': function () { return blocks.map(function (b) { return b.editFormUrl; }); },
             'block-frontend': function () { return blocks.map(function (b) { return b.frontendUrl; }); },
             'admin': function () { return adminSections.map(function (s) { return s.url; }); },
-            'admin-edit': function () { return adminEditLinks.map(function (l) { return l.url; }); }
+            'admin-edit': function () {
+                return adminEditLinks.filter(function (l) { return !l.isNew; }).map(function (l) { return l.url; });
+            }
         };
 
         // A block with no edit form has an empty URL, and the same URL twice would

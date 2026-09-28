@@ -94,6 +94,7 @@ class PageCreator
             'allowedActions' => PageTypeCollector::allowedActionsFor($className),
             'expectedStatus' => ExpectedStatus::forShortName($shortName),
             'blockListUrls' => ElementalSupport::blockListUrlsFor($page),
+            'cmsScreenChecks' => PageTypeCollector::cmsScreenChecksFor($page),
         ];
     }
 }

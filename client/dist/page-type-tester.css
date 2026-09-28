@@ -288,6 +288,8 @@ p.ptl-desc {
 .ptl-panel .ptl-table {
     border-radius: 0;
     box-shadow: none;
+    /* The panel rounds the corners, so this only clipped tips on the first rows. */
+    overflow: visible;
 }
 
 .ptl-table-bar {
@@ -384,8 +386,18 @@ p.ptl-desc {
     border-top-color: #343a40;
 }
 
-:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-delete-btn, .ptl-form-badge, .ptl-check-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
+:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-delete-btn, .ptl-form-badge, .ptl-check-badge, .ptl-status-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
     display: block;
+}
+
+/* A sentence or two, such as why a 200 failed, so it wraps rather than running wide. */
+.ptl-tip-text {
+    width: max-content;
+    max-width: 320px;
+    white-space: normal;
+    text-align: left;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 /* Login banner */
@@ -681,6 +693,7 @@ div.ptl-empty-note {
 
 /* Status badges are buttons so a single link can be re-checked from the keyboard. */
 button.ptl-status-badge {
+    position: relative;
     padding: 3px 6px;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -716,6 +729,42 @@ button.ptl-status-login {
     background: #fff3cd;
     color: #6b5203;
     border-color: var(--ptl-warn);
+}
+
+/*
+ * A failed Settings or History screen, under the edit form's status. Only shown on
+ * failure, so it is kept small enough not to crowd the cell.
+ */
+.ptl-screen-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.ptl-table a.ptl-screen-badge {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 5px 0 3px;
+    border-radius: 3px;
+    background: var(--ptl-fail);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.ptl-table a.ptl-screen-badge:hover {
+    text-decoration: underline;
+}
+
+.ptl-screen-badge .ptl-icon {
+    width: 11px;
+    height: 11px;
 }
 
 /* Badges */
@@ -1110,15 +1159,73 @@ button.ptl-status-login {
 
 /* Admin edits */
 
+/*
+ * Model, example record and add form, in columns shared by every model in the
+ * section. Each row is a subgrid so it can still carry its own divider.
+ */
+.ptl-edit-grid {
+    display: grid;
+    grid-template-columns: max-content max-content max-content;
+    column-gap: 24px;
+    width: fit-content;
+}
+
+.ptl-edit-grid-no-add {
+    grid-template-columns: max-content max-content;
+}
+
 .ptl-edit-link {
-    display: flex;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     align-items: center;
-    gap: 6px;
-    padding: 5px 0;
+    padding: 7px 0;
 }
 
 .ptl-edit-link + .ptl-edit-link {
     border-top: 1px solid #f0f0f0;
+}
+
+/* A status and its link. */
+.ptl-edit-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ptl-edit-item .ptl-status {
+    margin-right: 0;
+}
+
+.ptl-edit-none {
+    color: var(--ptl-muted);
+    font-size: 13px;
+    font-style: italic;
+}
+
+/*
+ * The form for a new record. Outlined and dashed rather than a plain link, so it
+ * does not read as another record.
+ */
+.ptl-table a.ptl-add-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border: 1px dashed #868e96;
+    border-radius: 4px;
+    color: var(--ptl-muted);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.ptl-table a.ptl-add-form:hover {
+    border-style: solid;
+    border-color: var(--ptl-muted);
+    background: #f1f3f5;
+    color: var(--ptl-text);
 }
 
 .ptl-edit-link a.ptl-cms {
@@ -1126,6 +1233,7 @@ button.ptl-status-login {
 }
 
 .ptl-edit-model {
+    justify-self: start;
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
     font-size: 11px;
     color: var(--ptl-muted-on-grey);

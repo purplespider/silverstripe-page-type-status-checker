@@ -14,6 +14,7 @@ use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldAddNewButton;
 use SilverStripe\Forms\GridField\GridFieldDetailForm;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Security;
@@ -111,19 +112,52 @@ class AdminSectionCollector
             // Taken from the grid's own list rather than the model's table, as the grid
             // 404s any record it does not list itself (e.g. a filtered getList()).
             $record = $grid->getList()->first();
-            if (!$record instanceof DataObject) {
-                continue;
+            if ($record instanceof DataObject) {
+                $links[] = new AdminEditLink(
+                    ClassInfo::shortName($dataClass),
+                    Director::absoluteURL($grid->Link('item/' . $record->ID)),
+                    (string) ($record->getTitle() ?: '(untitled)'),
+                    $editIndex++
+                );
             }
 
-            $links[] = new AdminEditLink(
-                ClassInfo::shortName($dataClass),
-                Director::absoluteURL($grid->Link('item/' . $record->ID)),
-                (string) ($record->getTitle() ?: '(untitled)'),
-                $editIndex++
-            );
+            // The add form builds its fields for an empty record, which is where
+            // getCMSFields() code that assumes a saved record falls over.
+            if ($this->canAddTo($grid)) {
+                $links[] = new AdminEditLink(
+                    ClassInfo::shortName($dataClass),
+                    Director::absoluteURL($grid->Link('item/new')),
+                    'Add new',
+                    $editIndex++,
+                    true
+                );
+            }
         }
 
         return $links;
+    }
+
+    /**
+     * Only grids that offer an Add button, as the add form refuses anybody the button
+     * would be hidden from.
+     */
+    private function canAddTo(GridField $grid): bool
+    {
+        if (!$grid->getConfig()->getComponentByType(GridFieldAddNewButton::class)) {
+            return false;
+        }
+
+        // As with canView() on the sections, only filter by permission when somebody is
+        // logged in, or the CLI report would never list an add form.
+        if (!Security::getCurrentUser()) {
+            return true;
+        }
+
+        try {
+            return (bool) singleton($grid->getModelClass())->canCreate();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

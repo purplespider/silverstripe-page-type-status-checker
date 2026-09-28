@@ -6,6 +6,8 @@ use Page;
 use PurpleSpider\PageTypeTester\ElementalSupport;
 use PurpleSpider\PageTypeTester\ExpectedStatus;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
+use SilverStripe\Admin\AdminRootController;
+use SilverStripe\CMS\Controllers\CMSPageSettingsController;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
@@ -14,6 +16,8 @@ use SilverStripe\Core\Config\Config;
 use SilverStripe\ORM\DataList;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Versioned\Versioned;
+use SilverStripe\VersionedAdmin\Controllers\CMSPageHistoryViewerController;
+use SilverStripe\VersionedAdmin\Controllers\HistoryViewerController;
 
 /**
  * Builds the list of page types, each with a representative page to test against.
@@ -82,6 +86,44 @@ class PageTypeCollector
     }
 
     /**
+     * The page's Settings and History screens in the CMS, which are separate requests
+     * from its edit form and can fail on their own.
+     *
+     * History is checked twice under one label, because its screen is an empty shell
+     * that answers 200 either way. The list of versions is fetched afterwards, and that
+     * is the part that usually fails.
+     *
+     * @return array<int, array{label: string, url: string, link: string}> Each check's
+     *         label, the URL requested, and the screen to open when it fails.
+     */
+    public static function cmsScreenChecksFor(SiteTree $page): array
+    {
+        $id = (int) $page->ID;
+
+        $settings = static::adminUrl(CMSPageSettingsController::class, 'show/' . $id);
+        $checks = [['label' => 'Settings', 'url' => $settings, 'link' => $settings]];
+
+        // History comes from silverstripe/versioned-admin, which a site can do without.
+        if (class_exists(CMSPageHistoryViewerController::class) && class_exists(HistoryViewerController::class)) {
+            $history = static::adminUrl(CMSPageHistoryViewerController::class, 'show/' . $id);
+            $versions = static::adminUrl(HistoryViewerController::class, 'api/read')
+                . '?' . http_build_query(['id' => $id, 'dataClass' => $page->ClassName]);
+
+            $checks[] = ['label' => 'History', 'url' => $history, 'link' => $history];
+            $checks[] = ['label' => 'History', 'url' => $versions, 'link' => $history];
+        }
+
+        return $checks;
+    }
+
+    private static function adminUrl(string $controllerClass, string $action): string
+    {
+        $segment = (string) Config::inst()->get($controllerClass, 'url_segment');
+
+        return Director::absoluteURL(AdminRootController::admin_url(Controller::join_links($segment, $action)));
+    }
+
+    /**
      * Sorting needs the counts and the row index needs the sort order, so counting is
      * a separate pass from building the rows.
      */
@@ -137,7 +179,8 @@ class PageTypeCollector
             Controller::join_links($baseUrl, 'admin/pages/edit/show', $page->ID),
             $frontendLink,
             '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
-            ElementalSupport::blockListUrlsFor($page)
+            ElementalSupport::blockListUrlsFor($page),
+            static::cmsScreenChecksFor($page)
         );
     }
 

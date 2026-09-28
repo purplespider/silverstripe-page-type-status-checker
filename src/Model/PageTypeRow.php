@@ -16,6 +16,8 @@ class PageTypeRow
      * @param string[] $allowedActions
      * @param int[] $expectedStatus
      * @param string[] $blockListUrls The page's Elemental block lists, checked with its CMS URL.
+     * @param array<int, array{label: string, url: string, link: string}> $cmsScreenChecks The page's other
+     *        CMS screens, such as Settings, only reported when they fail.
      */
     public function __construct(
         public readonly string $class,
@@ -30,7 +32,8 @@ class PageTypeRow
         public readonly string $cmsLink = '',
         public readonly string $frontendLink = '',
         public readonly string $pageUrl = '',
-        public readonly array $blockListUrls = []
+        public readonly array $blockListUrls = [],
+        public readonly array $cmsScreenChecks = []
     ) {
     }
 
