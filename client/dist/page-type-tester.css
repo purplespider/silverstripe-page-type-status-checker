@@ -595,7 +595,7 @@ p.ptl-desc {
     margin-right: 0;
 }
 
-.ptl-link-cell :is(.ptl-compare-btn, .ptl-form-badge) {
+.ptl-link-cell .ptl-compare-btn {
     margin-left: 0;
 }
 
@@ -736,14 +736,58 @@ button.ptl-status-login {
     white-space: nowrap;
 }
 
+/* The form badge links to the form, but should still read as a badge. */
+.ptl-table a.ptl-form-badge {
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.ptl-table a.ptl-form-badge:hover {
+    background: #ffe69c;
+}
+
+/*
+ * A panel of its own beneath the page's status, with smaller badges, so the page's
+ * status is still the first thing read in the cell. The tint is translucent so it
+ * works on a tested row's green as well as on white.
+ */
 .ptl-actions-container {
     display: grid;
     grid-template-columns: auto auto;
-    gap: 4px 6px;
-    margin-top: 8px;
+    gap: 4px 10px;
+    width: fit-content;
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: rgb(0 0 0 / 0.035);
+    border: 1px solid rgb(0 0 0 / 0.07);
+    border-radius: 6px;
     align-items: center;
     justify-content: start;
     justify-items: start;
+}
+
+.ptl-actions-container :is(button.ptl-status-badge, .ptl-status-placeholder, a.ptl-form-badge, .ptl-check-badge, .ptl-btn-actions) {
+    padding: 1px 6px;
+    font-size: 11px;
+}
+
+.ptl-actions-container :is(button.ptl-status-badge, .ptl-status-placeholder) {
+    min-width: 40px;
+}
+
+/* Actions and forms are filled in separately but laid out as one list. */
+.ptl-actions-part {
+    display: contents;
+}
+
+/* A lone item (the actions prompt, a placeholder or a load error) takes a whole row,
+   so the badge and label pairs after it stay in their columns. */
+.ptl-actions-part > :only-child {
+    grid-column: 1 / -1;
+}
+
+.ptl-actions-container:not(:has(.ptl-actions-part > *)) {
+    display: none;
 }
 
 .ptl-table a.ptl-action {
@@ -753,7 +797,8 @@ button.ptl-status-login {
     text-decoration: underline;
 }
 
-.ptl-action-missing {
+.ptl-action-missing,
+.ptl-form-name {
     color: var(--ptl-muted);
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
     font-size: 12px;
@@ -996,6 +1041,28 @@ button.ptl-status-login {
     background: #dcede0;
 }
 
+/* Ticking a row means its manual checks are done, so they stop asking for attention. */
+.ptl-table tbody tr.ptl-is-tested :is(.ptl-form-badge, .ptl-check-badge, .ptl-action-note) {
+    background: #e9ecef;
+    color: var(--ptl-muted-on-grey);
+    border-color: var(--ptl-border);
+}
+
+.ptl-table tbody tr.ptl-is-tested a.ptl-form-badge:hover {
+    background: #dee2e6;
+}
+
+/* Still a button, so it takes the plain button look rather than the badge grey. */
+.ptl-table tbody tr.ptl-is-tested .ptl-btn-actions {
+    background: var(--ptl-surface);
+    border-color: #adb5bd;
+}
+
+.ptl-table tbody tr.ptl-is-tested .ptl-btn-actions:hover {
+    background: #f1f3f5;
+    border-color: #6c757d;
+}
+
 .ptl-table.ptl-hide-tested tr.ptl-is-tested {
     display: none;
 }
@@ -1204,7 +1271,8 @@ button.ptl-status-login {
     }
 
     .ptl-table a.ptl-action,
-    .ptl-action-missing {
+    .ptl-action-missing,
+    .ptl-form-name {
         font-size: 11px;
     }
 

@@ -294,9 +294,10 @@ class HtmlReport
             . ($draftOnly > 0 ? " <span class='ptl-count-draft'>+ {$draftOnly}</span>" : '')
             . "<span class='ptl-tip ptl-tip-above'>{$row->liveCount} live, {$draftOnly} draft only</span></span>";
 
-        $actionsContainer = $row->allowedActions
-            ? "<span id='actions-container-{$row->index}' class='ptl-actions-container'></span>"
-            : '';
+        // Actions and detected forms share one list, each filled in by the script.
+        $actionsContainer = "<div class='ptl-actions-container'>"
+            . "<span id='actions-container-{$row->index}' class='ptl-actions-part'></span>"
+            . "<span id='forms-container-{$row->index}' class='ptl-actions-part'></span></div>";
 
         // Only pages this report created can be deleted again, so only those get a button.
         $deleteButton = in_array((int) $row->page->ID, $this->createdPageIds, true)
@@ -360,7 +361,7 @@ class HtmlReport
         $frontendCell = $this->linkCell(
             "<span id='frontend-status-{$row->index}' class='ptl-status'>"
             . "<span class='ptl-status-placeholder'>?</span></span>",
-            $frontendLink . "<span id='form-indicator-{$row->index}'></span>",
+            $frontendLink,
             $liveFrontendLink,
             $compareFrontend
         );

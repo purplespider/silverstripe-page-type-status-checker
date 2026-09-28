@@ -66,7 +66,6 @@ PurpleSpider\PageTypeTester\ActionLinkFinder:
   # contains no link to them.
   direct_actions:
     - rss
-    - index
 
 PurpleSpider\PageTypeTester\Report\HtmlReport:
   # How many checks the browser runs at once. Lower this for slow or rate-limited sites.
@@ -79,6 +78,7 @@ PurpleSpider\PageTypeTester\Report\HtmlReport:
 - `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
+- An action that is a form on the page (the form's id is `Form_{Action}`, or it submits to `.../{Action}`) is shown once, as a "form action" linking to the form, rather than as a separate action to check. `index` is never listed, as it is the page itself.
 - On a page with Elemental blocks, the CMS check also requests each of the page's block lists (`admin/elemental-area/api/readElements/{id}`). The edit form itself answers 200 even when its blocks editor cannot load, because the block list is fetched afterwards, so a block that fails there would otherwise go unnoticed.
 
 ### Blocks

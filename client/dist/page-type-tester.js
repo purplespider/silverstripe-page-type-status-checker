@@ -263,20 +263,98 @@
 
     /* forms */
 
+    /**
+     * Returns each form in the page's main content, with its id (to link straight to
+     * it) and a label to find it by: the id, else its action, else its name.
+     */
     function detectForms(html) {
         var cleaned = html
             .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
             .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '');
 
-        var matches = cleaned.match(/<form[^>]*>/gi);
-        if (!matches) {
-            return 0;
-        }
+        var matches = cleaned.match(/<form[^>]*>/gi) || [];
 
         return matches.filter(function (tag) {
             // The CMS preview toolbar injects its own form, which is not page content.
             return tag.indexOf('BetterNavigator') === -1;
-        }).length;
+        }).map(function (tag) {
+            var id = formAttribute(tag, 'id');
+
+            // "#" and an empty action both submit to the page itself, so say nothing.
+            var action = formAttribute(tag, 'action').replace(config.baseUrl, '').split(/[?#]/)[0];
+
+            return {
+                id: id,
+                label: id ? '#' + id : (action || formAttribute(tag, 'name') || '(no id)'),
+                // The last segment of the URL it submits to, which for a form on a page's
+                // own controller is the action that builds it.
+                target: action.replace(/\/+$/, '').split('/').pop().toLowerCase()
+            };
+        });
+    }
+
+    function formAttribute(tag, name) {
+        var match = tag.match(new RegExp('\\s' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i'));
+        return match ? (match[1] || match[2] || match[3] || '').trim() : '';
+    }
+
+    /**
+     * Silverstripe gives a form the id Form_{name} and submits it to {page}/{name}, and
+     * that name is also an allowed action. Either match means the action is the form.
+     */
+    function isFormAction(form, action) {
+        var name = action.toLowerCase();
+        var id = form.id.toLowerCase();
+
+        return id === 'form_' + name || id === name || form.target === name;
+    }
+
+    /**
+     * Actions that are not one of the page's forms. The rest are shown as their form, as
+     * there is no link to follow and the form is the thing to check.
+     */
+    function linkActions(row) {
+        return row.actions.filter(function (action) {
+            return !(row.forms || []).some(function (form) {
+                return isFormAction(form, action);
+            });
+        });
+    }
+
+    function renderForms(row, forms) {
+        row.forms = forms;
+
+        var container = el('forms-container-' + row.index);
+        if (!container) {
+            return;
+        }
+
+        // Without an id there is nothing to jump to, so that link just opens the page.
+        container.innerHTML = forms.map(function (form) {
+            var url = form.id ? row.frontendLink + '#' + encodeURIComponent(form.id) : row.frontendLink;
+            var opens = form.id ? 'Opens the page at the form.' : 'Opens the page.';
+            var actions = row.actions.filter(function (action) {
+                return isFormAction(form, action);
+            }).map(function (action) {
+                return '/' + action;
+            });
+
+            // A form that is one of the page's actions is listed as that action, among
+            // the others, rather than as a form found on the page.
+            var badge = actions.length ? 'form action' : 'form';
+            var label = actions.length ? actions.join(', ') : form.label;
+            var tip = actions.length
+                ? 'This action is a form on the page' + (form.id ? ' (#' + form.id + ')' : '')
+                    + ', so has no link to check. Check the form manually.'
+                : 'A form was detected on this page. Check it manually.';
+
+            return '<span class="ptl-status"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener"'
+                + ' class="ptl-form-badge">' + icon('document') + ' ' + badge
+                + '<span class="ptl-sr-only">: ' + escapeHtml(label) + '. ' + opens + '</span>'
+                + '<span class="ptl-tip ptl-tip-above" aria-hidden="true">' + escapeHtml(tip)
+                + ' ' + opens + '</span></a></span>'
+                + '<span class="ptl-form-name" aria-hidden="true">' + escapeHtml(label) + '</span>';
+        }).join('');
     }
 
     /* actions */
@@ -341,7 +419,7 @@
 
         var html = '';
 
-        row.actions.forEach(function (action) {
+        linkActions(row).forEach(function (action) {
             if (foundLinks[action]) {
                 html += '<span id="action-status-' + row.index + '-' + escapeHtml(action) + '" class="ptl-status">'
                     + placeholder('...') + '</span>'
@@ -360,19 +438,25 @@
 
     function renderActionPrompt(row) {
         var container = el('actions-container-' + row.index);
-        if (!container || !row.actions.length) {
+        if (!container) {
             return;
         }
 
-        var label = row.actions.length === 1
-            ? '<span class="action-name">' + escapeHtml(row.actions[0]) + '</span>'
-            : row.actions.length + ' actions';
+        var actions = linkActions(row);
+        if (!actions.length) {
+            container.innerHTML = '';
+            return;
+        }
+
+        var label = actions.length === 1
+            ? '<span class="action-name">' + escapeHtml(actions[0]) + '</span>'
+            : actions.length + ' actions';
 
         container.innerHTML = '<span class="ptl-actions-warning">'
             + '<button type="button" class="ptl-btn-actions" data-ptl-action="check-row-actions"'
             + ' data-ptl-row="' + row.index + '">' + label
             + '<span class="ptl-tip ptl-tip-above"><em>Activate to detect and test:</em><br>'
-            + escapeHtml(row.actions.join(', ')) + '</span></button></span>';
+            + escapeHtml(actions.join(', ')) + '</span></button></span>';
     }
 
     async function checkAction(row, action, url) {
@@ -439,14 +523,7 @@
         span.innerHTML = statusBadge(result, row.expected, 'frontend:' + row.index);
         recordResult(result, row.expected);
 
-        if (result.html) {
-            var formIndicator = el('form-indicator-' + row.index);
-            if (formIndicator && detectForms(result.html) > 0) {
-                formIndicator.innerHTML = '<span class="ptl-form-badge">' + icon('document')
-                    + ' form<span class="ptl-tip ptl-tip-above">A form was detected on this page.'
-                    + ' Check it manually.</span></span>';
-            }
-        }
+        renderForms(row, result.html ? detectForms(result.html) : []);
 
         if (!row.actions.length) {
             return;
@@ -457,7 +534,8 @@
             return;
         }
 
-        var foundLinks = findActionLinks(result.html, row.actions, row.frontendLink);
+        // Form actions are left out, so they count as manual checks in the loop below.
+        var foundLinks = findActionLinks(result.html, linkActions(row), row.frontendLink);
         renderActionLinks(row, foundLinks);
 
         for (var i = 0; i < row.actions.length; i++) {
@@ -762,9 +840,9 @@
     }
 
     function buildRowHtml(newRow, result) {
-        var actionsHtml = newRow.actions.length
-            ? '<span id="actions-container-' + newRow.index + '" class="ptl-actions-container"></span>'
-            : '';
+        var actionsHtml = '<div class="ptl-actions-container">'
+            + '<span id="actions-container-' + newRow.index + '" class="ptl-actions-part"></span>'
+            + '<span id="forms-container-' + newRow.index + '" class="ptl-actions-part"></span></div>';
 
         return testedCellHtml(newRow)
             + '<td class="ptl-preview-col"><div class="ptl-preview">'
@@ -783,7 +861,6 @@
                 cellLink(result.frontendLink, config.comparing ? 'This page' : 'View Page',
                     config.comparing ? 'view ' + newRow.shortClass + ' on this site' : newRow.shortClass,
                     'ptl-frontend', 'desktop')
-                    + '<span id="form-indicator-' + newRow.index + '"></span>'
             ) + actionsHtml + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
             + deleteButtonHtml(newRow, result.title) + '</span>'
@@ -1607,7 +1684,10 @@
             return;
         }
 
-        var foundLinks = findActionLinks(result.html, row.actions, row.frontendLink);
+        renderForms(row, detectForms(result.html));
+
+        // Form actions are left out, so they count as manual checks in the loop below.
+        var foundLinks = findActionLinks(result.html, linkActions(row), row.frontendLink);
         renderActionLinks(row, foundLinks);
 
         for (var i = 0; i < row.actions.length; i++) {
