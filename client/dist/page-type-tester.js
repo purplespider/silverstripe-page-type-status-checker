@@ -26,6 +26,7 @@
         notLoggedIn: false,
         checksHaveRun: false,
         checksIncludedActions: false,
+        liveDomain: config.liveDomain || '',
         totals: { passed: 0, failed: 0, manual: 0, login: 0 }
     };
 
@@ -1062,15 +1063,13 @@
             + '<td><span class="ptl-count">0 <span class="ptl-count-draft">+ 1</span></span></td>'
             + '<td>' + linkCell(
                 '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                cellLink(result.editLink, config.comparing ? 'This CMS' : 'Edit in CMS',
-                    config.comparing ? 'edit ' + newRow.shortClass + ' on this site' : newRow.shortClass,
-                    'ptl-cms', 'desktop')
+                cellLink(result.editLink, 'Edit in CMS', newRow.shortClass, 'ptl-cms', 'desktop',
+                    ['This CMS', 'edit ' + newRow.shortClass + ' on this site'])
             ) + '</td>'
             + '<td>' + linkCell(
                 '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                cellLink(result.frontendLink, config.comparing ? 'This page' : 'View Page',
-                    config.comparing ? 'view ' + newRow.shortClass + ' on this site' : newRow.shortClass,
-                    'ptl-frontend', 'desktop')
+                cellLink(result.frontendLink, 'View Page', newRow.shortClass, 'ptl-frontend', 'desktop',
+                    ['This page', 'view ' + newRow.shortClass + ' on this site'])
             ) + actionsHtml + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
             + deleteButtonHtml(newRow, result.title) + '</span>'
@@ -1113,11 +1112,22 @@
     }
 
     // Mirrors HtmlReport::cellLink.
-    function cellLink(url, label, description, className, iconName) {
+    function cellLink(url, label, description, className, iconName, comparing) {
         return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="' + className + '">'
             + icon(iconName)
-            + '<span class="ptl-link-label">' + escapeHtml(label) + '</span>'
-            + '<span class="ptl-sr-only"> \u2013 ' + escapeHtml(description) + '</span></a>';
+            + '<span class="ptl-link-label">' + swapText(label, comparing && comparing[0]) + '</span>'
+            + '<span class="ptl-sr-only"> \u2013 ' + swapText(description, comparing && comparing[1])
+            + '</span></a>';
+    }
+
+    // Mirrors HtmlReport::swapText.
+    function swapText(plain, comparing) {
+        if (!comparing) {
+            return escapeHtml(plain);
+        }
+
+        return '<span class="ptl-when-plain">' + escapeHtml(plain) + '</span>'
+            + '<span class="ptl-when-comparing">' + escapeHtml(comparing) + '</span>';
     }
 
     // Mirrors HtmlReport::deleteButton.
@@ -1198,9 +1208,8 @@
         var formCell = block.editFormUrl
             ? linkCell(
                 '<span id="block-form-status-' + block.index + '" class="ptl-status">' + placeholder('?') + '</span>',
-                cellLink(block.editFormUrl, config.comparing ? 'This CMS' : 'Edit Block',
-                    config.comparing ? 'edit ' + block.shortClass + ' on this site' : block.shortClass + ' edit form',
-                    'ptl-cms', 'desktop')
+                cellLink(block.editFormUrl, 'Edit Block', block.shortClass + ' edit form', 'ptl-cms', 'desktop',
+                    ['This CMS', 'edit ' + block.shortClass + ' on this site'])
             )
             : '<span class="ptl-url">—</span>';
 
@@ -1537,7 +1546,7 @@
             windowFeatures(width, height, left, top)
         );
         var live = window.open(
-            button.getAttribute('data-ptl-live'),
+            state.liveDomain + button.getAttribute('data-ptl-live-path'),
             'ptl-compare-live',
             windowFeatures(width, height, left + width, top)
         );
@@ -1769,14 +1778,84 @@
         }
     }
 
-    function setParam(name, value) {
+    function urlWithParam(name, value) {
         var url = new URL(window.location.href);
         if (value) {
             url.searchParams.set(name, value);
         } else {
             url.searchParams.delete(name);
         }
-        window.location.href = url.toString();
+        return url.toString();
+    }
+
+    function setParam(name, value) {
+        window.location.href = urlWithParam(name, value);
+    }
+
+    /* live domain */
+
+    /**
+     * Mirrors PageTypeTesterTask::sanitiseLiveDomain: an absolute http(s) URL, rebuilt
+     * from its parts, with no trailing slash. Anything else gives an empty string.
+     */
+    function sanitiseLiveDomain(value) {
+        var url;
+        try {
+            url = new URL(value.trim());
+        } catch (e) {
+            return '';
+        }
+
+        if ((url.protocol !== 'http:' && url.protocol !== 'https:') || !/^[a-z0-9.\-]+$/i.test(url.hostname)) {
+            return '';
+        }
+
+        return (url.protocol + '//' + url.host + url.pathname).replace(/\/+$/, '');
+    }
+
+    /**
+     * Sets or clears the live domain in place. The live links are already in the
+     * markup, so this only fills in their hrefs and flips the class that shows them,
+     * which keeps every check result on the page instead of reloading and running the
+     * lot again. The address bar is updated too, so a reload or a shared link keeps it.
+     */
+    function applyLiveDomain(domain) {
+        state.liveDomain = domain;
+
+        document.querySelectorAll('.ptl-wrap').forEach(function (wrap) {
+            wrap.classList.toggle('ptl-comparing', domain !== '');
+        });
+
+        document.querySelectorAll('a[data-ptl-live-path]').forEach(function (link) {
+            if (domain) {
+                link.href = domain + link.getAttribute('data-ptl-live-path');
+            } else {
+                link.removeAttribute('href');
+            }
+        });
+
+        el('ptl-live-domain-input').value = domain;
+        el('ptl-live-domain-status').textContent = domain
+            ? 'Live links now point to ' + domain + '.'
+            : 'Live links removed.';
+
+        history.replaceState(history.state, '', urlWithParam('live-domain', domain));
+    }
+
+    function submitLiveDomain(form) {
+        var input = form.querySelector('#ptl-live-domain-input');
+        var raw = input.value.trim();
+        var domain = sanitiseLiveDomain(raw);
+
+        // The browser has already checked it is a URL. This catches the rest, such as
+        // an ftp: address, which the server would otherwise drop without a word.
+        if (raw && !domain) {
+            input.setCustomValidity('Enter an http or https address, such as https://example.com');
+            input.reportValidity();
+            return;
+        }
+
+        applyLiveDomain(domain);
     }
 
     function goToLogin() {
@@ -1840,11 +1919,10 @@
             case 'reset':
                 setParam('randomise', '');
                 break;
-            case 'set-live-domain':
-                setParam('live-domain', el('ptl-live-domain-input').value.trim());
-                break;
             case 'clear-live-domain':
-                setParam('live-domain', '');
+                applyLiveDomain('');
+                // Clear hides itself, so focus would otherwise drop to the body.
+                el('ptl-live-domain-input').focus();
                 break;
             case 'login':
                 goToLogin();
@@ -1852,6 +1930,21 @@
             case 'reload':
                 window.location.reload();
                 break;
+        }
+    });
+
+    // Enter in the field submits too, as it is a real form. It only submits for real
+    // without the script.
+    document.addEventListener('submit', function (event) {
+        if (event.target.matches('.ptl-live-domain-form')) {
+            event.preventDefault();
+            submitLiveDomain(event.target);
+        }
+    });
+
+    document.addEventListener('input', function (event) {
+        if (event.target.id === 'ptl-live-domain-input') {
+            event.target.setCustomValidity('');
         }
     });
 

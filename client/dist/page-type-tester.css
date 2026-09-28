@@ -1350,6 +1350,26 @@ button.ptl-status-login {
     width: 280px;
 }
 
+.ptl-live-domain-status {
+    align-self: center;
+    font-size: 13px;
+    color: #343a40;
+}
+
+/*
+ * The live links, Compare and the "This CMS" labels are always in the markup, and
+ * the ptl-comparing class on the wrap decides which show. That lets the script set or
+ * clear the domain without reloading the report and re-running every check.
+ */
+.ptl-wrap:not(.ptl-comparing) .ptl-when-comparing,
+.ptl-wrap.ptl-comparing .ptl-when-plain {
+    display: none;
+}
+
+.ptl-wrap:not(.ptl-js) .ptl-js-only {
+    display: none;
+}
+
 /* Help */
 
 .ptl-help {

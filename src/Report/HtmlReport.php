@@ -67,7 +67,7 @@ class HtmlReport
     ): void {
         $output->writeForHtml($this->assets());
         $output->writeForHtml($this->iconSprite());
-        $output->writeForHtml("<div class='ptl-wrap'>");
+        $output->writeForHtml("<div class='ptl-wrap" . ($this->liveDomain !== '' ? ' ptl-comparing' : '') . "'>");
         $output->writeForHtml($this->loginBanner());
         $output->writeForHtml($this->toolbar());
         $output->writeForHtml($this->pageTypeTable($rows));
@@ -308,51 +308,44 @@ class HtmlReport
             ? $this->deleteButton((int) $row->page->ID, $row->index, $row->title)
             : '';
 
-        $comparing = $this->liveDomain !== '';
-
         $cmsLink = $this->cellLink(
             $row->cmsLink,
-            $comparing ? 'This CMS' : 'Edit in CMS',
-            $comparing ? "edit {$row->shortClass} on this site" : $row->shortClass,
+            'Edit in CMS',
+            $row->shortClass,
             'ptl-cms',
-            'desktop'
+            'desktop',
+            ['This CMS', "edit {$row->shortClass} on this site"]
         );
 
         $frontendLink = $this->cellLink(
             $row->frontendLink,
-            $comparing ? 'This page' : 'View Page',
-            $comparing ? "view {$row->shortClass} on this site" : $row->shortClass,
+            'View Page',
+            $row->shortClass,
             'ptl-frontend',
-            'desktop'
+            'desktop',
+            ['This page', "view {$row->shortClass} on this site"]
         );
 
-        $liveCmsLink = '';
-        $liveFrontendLink = '';
-        $compareCms = '';
-        $compareFrontend = '';
-        if ($comparing) {
-            // Escaped on output. This value comes from the query string.
-            $liveCmsUrl = $this->liveDomain . '/admin/pages/edit/show/' . $row->page->ID;
-            $liveFrontendUrl = $this->liveDomain . $row->pageUrl;
+        // Rendered whether or not a live domain is set, and shown by the ptl-comparing
+        // class, so the script can set or clear the domain without reloading the report.
+        $liveCmsPath = '/admin/pages/edit/show/' . $row->page->ID;
+        $liveFrontendPath = $row->pageUrl;
 
-            $liveCmsLink = $this->cellLink(
-                $liveCmsUrl,
-                'Live CMS',
-                "edit {$row->shortClass} on the live site",
-                'ptl-cms',
-                'globe'
-            );
-            $liveFrontendLink = $this->cellLink(
-                $liveFrontendUrl,
-                'Live page',
-                "view {$row->shortClass} on the live site",
-                'ptl-frontend',
-                'globe'
-            );
+        $liveCmsLink = $this->liveLink(
+            $liveCmsPath,
+            'Live CMS',
+            "edit {$row->shortClass} on the live site",
+            'ptl-cms'
+        );
+        $liveFrontendLink = $this->liveLink(
+            $liveFrontendPath,
+            'Live page',
+            "view {$row->shortClass} on the live site",
+            'ptl-frontend'
+        );
 
-            $compareCms = $this->compareButton($row->cmsLink, $liveCmsUrl, $row->title . ' in the CMS');
-            $compareFrontend = $this->compareButton($row->frontendLink, $liveFrontendUrl, $row->title);
-        }
+        $compareCms = $this->compareButton($row->cmsLink, $liveCmsPath, $row->title . ' in the CMS');
+        $compareFrontend = $this->compareButton($row->frontendLink, $liveFrontendPath, $row->title);
 
         $cmsCell = $this->linkCell(
             "<span id='cms-status-{$row->index}' class='ptl-status'>"
@@ -467,11 +460,13 @@ class HtmlReport
      */
     private function linkCell(string $status, string $localRow, string $liveRow, string $compare): string
     {
-        $live = $liveRow === '' ? '' : "<div class='ptl-link-row'>{$liveRow}</div>";
+        $live = $liveRow === '' ? '' : "<div class='ptl-link-row ptl-when-comparing'>{$liveRow}</div>";
 
         // The rule marks where the pair ends. Compare belongs to both rows, so it sits
         // the other side of it rather than lining up with either one.
-        $compareCell = $compare === '' ? '' : "<span class='ptl-compare-wrap'>{$compare}</span>";
+        $compareCell = $compare === ''
+            ? ''
+            : "<span class='ptl-compare-wrap ptl-when-comparing'>{$compare}</span>";
 
         return "<div class='ptl-link-cell'>{$status}<div class='ptl-link-stack'>"
             . "<div class='ptl-link-row'>{$localRow}</div>{$live}</div>{$compareCell}</div>";
@@ -484,18 +479,51 @@ class HtmlReport
      * "This page"/"Live page", so each pair reads as a pair while still saying which of
      * the row's two pairs it belongs to. The hidden description carries the page name,
      * which the short label on its own no longer says.
+     *
+     * Both versions are rendered and the ptl-comparing class picks one, so setting a
+     * domain in the page does not need the row rebuilt.
+     *
+     * @param array{0: string, 1: string}|null $comparing Label and description to use
+     *        instead while a live domain is set. Null where the link has no live pair.
      */
     private function cellLink(
         string $url,
         string $label,
         string $description,
         string $class,
-        string $icon
+        string $icon,
+        ?array $comparing = null
     ): string {
         // The underline goes on the label rather than the anchor, so it does not run
         // under the icon as well.
         return "<a href='" . $this->esc($url) . "' target='_blank' rel='noopener' class='{$class}'>"
             . $this->icon($icon)
+            . "<span class='ptl-link-label'>" . $this->swapText($label, $comparing[0] ?? null) . "</span>"
+            . "<span class='ptl-sr-only'> &ndash; " . $this->swapText($description, $comparing[1] ?? null)
+            . "</span></a>";
+    }
+
+    private function swapText(string $plain, ?string $comparing): string
+    {
+        if ($comparing === null) {
+            return $this->esc($plain);
+        }
+
+        return "<span class='ptl-when-plain'>" . $this->esc($plain) . "</span>"
+            . "<span class='ptl-when-comparing'>" . $this->esc($comparing) . "</span>";
+    }
+
+    /**
+     * The live half of a pair. It carries the path rather than a full URL, and only has
+     * an href while a domain is set, which the script fills in when one is set later.
+     */
+    private function liveLink(string $path, string $label, string $description, string $class): string
+    {
+        // Escaped on output. The domain comes from the query string.
+        $href = $this->liveDomain === '' ? '' : " href='" . $this->esc($this->liveDomain . $path) . "'";
+
+        return "<a{$href} data-ptl-live-path='" . $this->esc($path) . "' target='_blank' rel='noopener'"
+            . " class='{$class}'>" . $this->icon('globe')
             . "<span class='ptl-link-label'>" . $this->esc($label) . "</span>"
             . "<span class='ptl-sr-only'> &ndash; " . $this->esc($description) . "</span></a>";
     }
@@ -508,12 +536,14 @@ class HtmlReport
      * send it for every response, which leaves the live half blank. A window is a
      * top-level browsing context, so framing rules do not apply and the live CMS stays
      * logged in as normal.
+     *
+     * The script joins the live path to whichever domain is set when it is clicked.
      */
-    private function compareButton(string $localUrl, string $liveUrl, string $title): string
+    private function compareButton(string $localUrl, string $livePath, string $title): string
     {
         return "<button type='button' class='ptl-compare-btn' data-ptl-action='compare'"
             . " data-ptl-local='" . $this->esc($localUrl) . "'"
-            . " data-ptl-live='" . $this->esc($liveUrl) . "'"
+            . " data-ptl-live-path='" . $this->esc($livePath) . "'"
             . " aria-label='" . $this->esc('Open ' . $title . ' and its live version side by side') . "'>"
             . $this->icon('compare') . " Compare</button>";
     }
@@ -674,30 +704,29 @@ class HtmlReport
     private function blockFormCell(BlockTypeRow $row): string
     {
         // A block created here does not exist on the live site, so has nothing to compare.
-        $comparing = $this->liveDomain !== '' && !$this->isCreatedBlock($row);
+        $hasLive = !$this->isCreatedBlock($row);
 
         $localLink = $this->cellLink(
             $row->editFormUrl,
-            $comparing ? 'This CMS' : 'Edit Block',
-            $comparing ? "edit {$row->shortClass} on this site" : "{$row->shortClass} edit form",
+            'Edit Block',
+            "{$row->shortClass} edit form",
             'ptl-cms',
-            'desktop'
+            'desktop',
+            $hasLive ? ['This CMS', "edit {$row->shortClass} on this site"] : null
         );
 
         $liveLink = '';
         $compare = '';
-        if ($comparing) {
-            // Escaped on output. The live domain comes from the query string.
-            $liveUrl = $this->liveDomain . '/' . ltrim(Director::makeRelative($row->editFormUrl), '/');
+        if ($hasLive) {
+            $livePath = '/' . ltrim(Director::makeRelative($row->editFormUrl), '/');
 
-            $liveLink = $this->cellLink(
-                $liveUrl,
+            $liveLink = $this->liveLink(
+                $livePath,
                 'Live CMS',
                 "edit {$row->shortClass} on the live site",
-                'ptl-cms',
-                'globe'
+                'ptl-cms'
             );
-            $compare = $this->compareButton($row->editFormUrl, $liveUrl, $row->title . ' in the CMS');
+            $compare = $this->compareButton($row->editFormUrl, $livePath, $row->title . ' in the CMS');
         }
 
         return $this->linkCell(
@@ -928,25 +957,57 @@ class HtmlReport
             . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' {$class}>{$label}</a></span>";
     }
 
+    /**
+     * A real GET form, so Enter submits it. The script applies the domain in place
+     * rather than letting it submit, so the checks already run are kept. Without the
+     * script it submits as normal and the report is rendered with the domain set.
+     */
     private function liveDomainSection(): string
     {
-        $clear = $this->liveDomain
-            ? "<button type='button' data-ptl-action='clear-live-domain' class='ptl-btn'>Clear</button>"
-            : '';
+        // Clear is script-only, like the tested ticks. Without the script, emptying the
+        // field and submitting does the same.
+        $clear = "<button type='button' data-ptl-action='clear-live-domain'"
+            . " class='ptl-btn ptl-when-comparing ptl-js-only'>Clear</button>";
 
         return "<div class='ptl-live-domain-section'>"
             . "<h2>Compare with Live Site</h2>"
             . "<p>Enter the live site URL to add \"Live CMS\" and \"Live Page\" links for each page type, "
             . "and a \"Live CMS\" link for each block's edit form, for comparing an upgraded local or staging site against production. These links are not checked.</p>"
-            . "<div class='ptl-live-domain-form'>"
+            . "<form class='ptl-live-domain-form' method='get' action='" . $this->esc($this->taskUrl()) . "'>"
+            . $this->carriedQueryInputs()
             . "<div class='ptl-field'>"
             . "<label for='ptl-live-domain-input'>Live site URL</label>"
-            . "<input type='url' id='ptl-live-domain-input' class='ptl-input' placeholder='https://example.com' "
-            . "value='" . $this->esc($this->liveDomain) . "'>"
+            . "<input type='url' id='ptl-live-domain-input' name='live-domain' class='ptl-input'"
+            . " placeholder='https://example.com' value='" . $this->esc($this->liveDomain) . "'>"
             . "</div>"
-            . "<button type='button' data-ptl-action='set-live-domain' class='ptl-btn'>"
+            . "<button type='submit' class='ptl-btn'>"
             . $this->icon('globe') . " Set Live Domain</button>{$clear}"
-            . "</div></div>";
+            . "<output id='ptl-live-domain-status' class='ptl-live-domain-status' aria-live='polite'></output>"
+            . "</form></div>";
+    }
+
+    /**
+     * A GET form replaces the whole query string, so the other options in use (skip-admin,
+     * randomise and so on) go along as hidden fields or submitting would drop them.
+     */
+    private function carriedQueryInputs(): string
+    {
+        $request = Controller::curr()?->getRequest();
+        if (!$request) {
+            return '';
+        }
+
+        $html = '';
+        foreach ($request->getVars() as $name => $value) {
+            if (!is_scalar($value) || in_array($name, ['live-domain', 'flush', 'url'], true)) {
+                continue;
+            }
+
+            $html .= "<input type='hidden' name='" . $this->esc((string) $name) . "' value='"
+                . $this->esc((string) $value) . "'>";
+        }
+
+        return $html;
     }
 
     private function helpSection(): string
@@ -1053,7 +1114,7 @@ class HtmlReport
             'deleteParam' => PageDeleter::PARAM,
             'createBlockParam' => BlockCreator::PARAM,
             'createdPageIds' => array_values($this->createdPageIds),
-            'comparing' => $this->liveDomain !== '',
+            'liveDomain' => $this->liveDomain,
             'concurrency' => (int) static::config()->get('check_concurrency'),
             'securityToken' => $this->securityToken(),
             'rows' => $rowData,
