@@ -107,7 +107,9 @@ class GridFieldFormFinder
     {
         if ($list instanceof DataList) {
             $records = [];
-            foreach ($list->columnUnique('ClassName') as $class) {
+            // columnUnique() alone is not enough: DISTINCT also covers the list's sort
+            // columns, so a grid sorted by date returns its class once per date.
+            foreach (array_unique($list->columnUnique('ClassName')) as $class) {
                 $record = $list->filter('ClassName', $class)->first();
                 if ($record) {
                     $records[] = $record;
