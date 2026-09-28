@@ -10,6 +10,7 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Automatically checks HTTP status codes for all links
 - Detects and tests controller `$allowed_actions`
 - Detects forms on pages (flags for manual testing)
+- Flags page types, block types and admin sections whose code sends email, and says where, so you know which forms to submit and which inboxes to check
 - With [Elemental](https://github.com/silverstripe/silverstripe-elemental) installed, checks one block of each block type: its summary in the CMS block list, its CMS edit form, and how it renders on its own. Also checks each page's block list along with its CMS edit form
 - "Create" buttons to add a test page for any page type, or a test block for any block type, that has none, and delete them again afterwards
 - Tick off each page type and admin section as you test it by hand, with a progress count and a filter to hide the ones already done
@@ -70,6 +71,18 @@ PurpleSpider\PageTypeTester\ActionLinkFinder:
 PurpleSpider\PageTypeTester\Report\HtmlReport:
   # How many checks the browser runs at once. Lower this for slow or rate-limited sites.
   check_concurrency: 6
+
+PurpleSpider\PageTypeTester\EmailUsageFinder:
+  # Classes whose use counts as sending email, subclasses included. Add a third-party
+  # mail client here if the site sends through one directly.
+  mail_classes:
+    - SilverStripe\Control\Email\Email
+    - Symfony\Component\Mailer\MailerInterface
+  # Global functions that send email.
+  mail_functions:
+    - mail
+  # How many classes deep to follow from a type's own code into the site's other classes.
+  reference_depth: 2
 ```
 
 ## How it decides what passed
@@ -90,6 +103,29 @@ Each block type is checked through one example block, preferring a published one
 - **Frontend** renders the block on its own, through the task, with its page set up as the current page. Elemental's own `/element/{id}` route answers 200 without rendering the block, so it cannot be used. Rendering errors are left to Silverstripe's error handling, so a broken block answers with a real 500, and opening the link in dev mode shows the full error.
 
 The CMS checks, and the frontend of a block that is only in draft, need a CMS login. Like the rest of the task these URLs are open to anyone in dev mode and need ADMIN elsewhere, and they read nothing in draft without CMS access.
+
+## Code that sends email
+
+A page can answer 200 while the email its form sends never arrives, and after an upgrade that is one of the first things to break, especially one past Silverstripe 5, which replaced SwiftMailer with Symfony Mailer and its config. So each page type, block type and admin section whose code sends email lists where, as an **email** entry in the same list as its actions and forms, labelled with the method that sends it. Hovering or tabbing to the badge shows the class, file and line, what it sends with, and how it was reached. Block types show the list under their frontend link. In admin sections, a record's usages sit beside its edit form, where saving one would be tested, and the admin's own under its section link. The CLI prints the same beneath each type.
+
+This reads the source rather than running it, so nothing is sent to find out. It counts as sending email:
+
+- creating an `Email` or a subclass of it (`Email::create()`, `new Email()`, `Injector::inst()->create(Email::class)`), or taking one as a parameter, as an `updateEmail()` hook does
+- using Symfony's `MailerInterface`
+- calling `mail()`
+
+Static helpers such as `Email::is_valid_address()` do not count.
+
+What is read for each type:
+
+- **Page types:** the page class and its controller, and their parents up to `Page` and `PageController`. A type extending `UserDefinedForm` is flagged through `UserDefinedFormController`, but a form every page has through `PageController`, such as a newsletter signup in the footer, is flagged once, on `Page`, rather than on every type
+- **Block types:** the block class and its `controller_class`, up to `BaseElement` and `ElementController`
+- **Admin sections:** the `ModelAdmin`, and separately each class it manages, such as a DataObject that sends a notification in `onAfterWrite()`. A managed class with no record to link to is listed by name in the Edit Form column. Settings reads `SiteConfig`
+- extensions applied directly to any of those classes, and traits they use
+
+From there it follows the other classes that code uses, such as a form class the controller builds or a notification service the form calls, up to two classes deep (`reference_depth`). These show as "via ContactPageController > EnquiryForm". Only the site's own code is followed, not `vendor`, or everything that touches `Member` would be flagged.
+
+It shows where email could be sent, not that it is: a UserDefinedForm is flagged whether or not any recipients are set up in the CMS. Code it cannot see, such as a call made through a string or a closure passed in from elsewhere, is missed.
 
 ## Comparing against the live site
 

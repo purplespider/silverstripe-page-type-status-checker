@@ -7,11 +7,15 @@ namespace PurpleSpider\PageTypeTester\Model;
  */
 class AdminEditLink
 {
+    /**
+     * @param EmailUsage[] $emailUsages Where the record's code sends email, e.g. on saving.
+     */
     public function __construct(
         public readonly string $modelName,
         public readonly string $url,
         public readonly string $recordTitle,
-        public readonly int $index
+        public readonly int $index,
+        public readonly array $emailUsages = []
     ) {
     }
 }

@@ -4,6 +4,7 @@ namespace PurpleSpider\PageTypeTester\Collector;
 
 use Page;
 use PurpleSpider\PageTypeTester\ElementalSupport;
+use PurpleSpider\PageTypeTester\EmailUsageFinder;
 use PurpleSpider\PageTypeTester\ExpectedStatus;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use SilverStripe\CMS\Model\SiteTree;
@@ -20,8 +21,11 @@ use SilverStripe\Versioned\Versioned;
  */
 class PageTypeCollector
 {
-    public function __construct(private readonly bool $randomise = false)
+    private readonly EmailUsageFinder $emailFinder;
+
+    public function __construct(private readonly bool $randomise = false, ?EmailUsageFinder $emailFinder = null)
     {
+        $this->emailFinder = $emailFinder ?? new EmailUsageFinder();
     }
 
     /**
@@ -109,6 +113,7 @@ class PageTypeCollector
 
         $actions = static::allowedActionsFor($class);
         $expected = ExpectedStatus::forShortName($shortClass);
+        $emailUsages = $this->emailFinder->forPageType($class);
 
         if (!$page) {
             return new PageTypeRow(
@@ -118,7 +123,8 @@ class PageTypeCollector
                 $data['totalCount'],
                 $actions,
                 $expected,
-                $index
+                $index,
+                emailUsages: $emailUsages
             );
         }
 
@@ -137,7 +143,8 @@ class PageTypeCollector
             Controller::join_links($baseUrl, 'admin/pages/edit/show', $page->ID),
             $frontendLink,
             '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
-            ElementalSupport::blockListUrlsFor($page)
+            ElementalSupport::blockListUrlsFor($page),
+            $emailUsages
         );
     }
 

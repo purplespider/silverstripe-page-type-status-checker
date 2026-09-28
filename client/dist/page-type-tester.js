@@ -826,7 +826,7 @@
             rememberCreatedPage(result.id);
 
             row.removeAttribute('id');
-            row.innerHTML = buildRowHtml(newRow, result);
+            replaceRowCells(row, buildRowHtml(newRow, result));
             renderTested();
 
             if (state.checksHaveRun) {
@@ -842,7 +842,8 @@
     function buildRowHtml(newRow, result) {
         var actionsHtml = '<div class="ptl-actions-container">'
             + '<span id="actions-container-' + newRow.index + '" class="ptl-actions-part"></span>'
-            + '<span id="forms-container-' + newRow.index + '" class="ptl-actions-part"></span></div>';
+            + '<span id="forms-container-' + newRow.index + '" class="ptl-actions-part"></span>'
+            + emailPartSlot() + '</div>';
 
         return testedCellHtml(newRow)
             + '<td class="ptl-preview-col"><div class="ptl-preview">'
@@ -865,6 +866,32 @@
             + '<td class="ptl-example-cell"><span class="ptl-title">' + escapeHtml(result.title)
             + deleteButtonHtml(newRow, result.title) + '</span>'
             + '<span class="ptl-url">' + escapeHtml(result.pageUrl) + '</span></td>';
+    }
+
+    /**
+     * Rebuilds a row's cells, but moves its email part across as it was. The server
+     * found those usages in the type's code, and the script has no copy of them, so each
+     * row builder leaves an empty slot for the part to go back into.
+     */
+    function replaceRowCells(rowEl, html) {
+        var emailPart = rowEl.querySelector('.ptl-email-part');
+
+        rowEl.innerHTML = html;
+
+        var slot = rowEl.querySelector('.ptl-email-part');
+        if (emailPart && slot) {
+            slot.replaceWith(emailPart);
+        }
+    }
+
+    // Mirrors HtmlReport::emailPart, empty, for replaceRowCells to fill.
+    function emailPartSlot() {
+        return '<span class="ptl-actions-part ptl-email-part"></span>';
+    }
+
+    // Mirrors HtmlReport::emailList, for block types, which have no actions list.
+    function emailListSlot() {
+        return '<div class="ptl-actions-container">' + emailPartSlot() + '</div>';
     }
 
     /**
@@ -939,7 +966,7 @@
             blocks.push(block);
             rememberCreatedPage(result.pageId);
 
-            row.innerHTML = buildBlockRowHtml(block, result);
+            replaceRowCells(row, buildBlockRowHtml(block, result));
             renderTested();
 
             if (state.checksHaveRun) {
@@ -984,7 +1011,7 @@
                 '<span id="block-frontend-status-' + block.index + '" class="ptl-status">' + placeholder('?') + '</span>',
                 cellLink(block.frontendUrl, 'View Block', block.shortClass + ' rendered on its own',
                     'ptl-frontend', 'desktop')
-            ) + '</td>'
+            ) + emailListSlot() + '</td>'
             + '<td class="ptl-example-cell"><span class="ptl-title">'
             + (result.pageLink
                 ? '<a href="' + escapeHtml(result.pageLink) + '" target="_blank" rel="noopener">'
@@ -1018,11 +1045,12 @@
         return testedCellHtml(block)
             + '<td>' + blockTypeNameHtml(block) + '</td>'
             + '<td><span class="ptl-count">0</span></td>'
-            + '<td colspan="4" style="text-align:center;">'
+            + '<td colspan="4"><div class="ptl-empty-content">'
             + '<button type="button" class="ptl-create-btn" data-ptl-action="create-block" data-ptl-class="'
             + escapeHtml(block.class) + '" data-ptl-short="' + escapeHtml(block.shortClass) + '" data-ptl-name="'
             + escapeHtml(block.singularName) + '">'
-            + icon('plus') + ' Create ' + escapeHtml(block.shortClass) + '</button></td>';
+            + icon('plus') + ' Create ' + escapeHtml(block.shortClass) + '</button>'
+            + emailListSlot() + '</div></td>';
     }
 
     async function deleteBlock(button) {
@@ -1059,7 +1087,7 @@
             blocks = blocks.filter(function (b) {
                 return b.index !== blockIndex;
             });
-            rowEl.innerHTML = buildEmptyBlockRowHtml(block);
+            replaceRowCells(rowEl, buildEmptyBlockRowHtml(block));
 
             renderTested();
             updateSummary(false);
@@ -1109,7 +1137,7 @@
             dropRow(rowIndex);
 
             if (rowData) {
-                rowEl.innerHTML = buildEmptyRowHtml(rowData);
+                replaceRowCells(rowEl, buildEmptyRowHtml(rowData));
             } else {
                 rowEl.remove();
             }
@@ -1240,18 +1268,24 @@
      * back to offering to create one.
      */
     function buildEmptyRowHtml(row) {
-        var note = row.actions && row.actions.length
-            ? '<div class="ptl-action-note">Has actions: ' + escapeHtml(row.actions.join(', ')) + '</div>'
-            : '';
+        var actions = (row.actions || []).map(function (action) {
+            return '<span class="ptl-status"><span class="ptl-action-badge">' + icon('warning')
+                + ' action<span class="ptl-sr-only">: create a page of this type to check it</span>'
+                + '<span class="ptl-tip ptl-tip-above" aria-hidden="true">Create a page of this type to check'
+                + ' this action</span></span></span>'
+                + '<span class="ptl-action-missing">/' + escapeHtml(action) + '</span>';
+        }).join('');
 
         return testedCellHtml(row)
             + '<td class="ptl-preview-col"><div class="ptl-preview-empty">No preview</div></td>'
             + '<td><span class="ptl-type">' + escapeHtml(row.shortClass) + '</span></td>'
             + '<td><span class="ptl-count">0</span></td>'
-            + '<td colspan="3" style="text-align:center;">'
+            + '<td colspan="3"><div class="ptl-empty-content">'
             + '<button type="button" class="ptl-create-btn" data-ptl-action="create-page" data-ptl-class="'
             + escapeHtml(row.class) + '" data-ptl-short="' + escapeHtml(row.shortClass) + '">'
-            + icon('plus') + ' Create ' + escapeHtml(row.shortClass) + '</button>' + note + '</td>';
+            + icon('plus') + ' Create ' + escapeHtml(row.shortClass) + '</button>'
+            + '<div class="ptl-actions-container"><span class="ptl-actions-part">' + actions + '</span>'
+            + emailPartSlot() + '</div></div></td>';
     }
 
     function showButtonError(button, original, message) {

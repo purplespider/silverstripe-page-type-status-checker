@@ -6,6 +6,7 @@ use DNADesign\Elemental\Models\BaseElement;
 use PurpleSpider\PageTypeTester\BlockEditorChecker;
 use PurpleSpider\PageTypeTester\BlockRenderer;
 use PurpleSpider\PageTypeTester\ElementalSupport;
+use PurpleSpider\PageTypeTester\EmailUsageFinder;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
@@ -27,8 +28,11 @@ class BlockTypeCollector
      */
     private const MAX_CANDIDATES = 20;
 
-    public function __construct(private readonly bool $randomise = false)
+    private readonly EmailUsageFinder $emailFinder;
+
+    public function __construct(private readonly bool $randomise = false, ?EmailUsageFinder $emailFinder = null)
     {
+        $this->emailFinder = $emailFinder ?? new EmailUsageFinder();
     }
 
     /**
@@ -78,6 +82,7 @@ class BlockTypeCollector
         $class = $data['class'];
         $shortClass = ClassInfo::shortName($class);
         $singularName = (string) singleton($class)->i18n_singular_name();
+        $emailUsages = $this->emailFinder->forBlockType($class);
 
         $example = $data['example'];
         if (!$example) {
@@ -87,7 +92,8 @@ class BlockTypeCollector
                 $singularName,
                 $data['liveCount'],
                 $data['totalCount'],
-                hostPageClass: (string) ElementalSupport::hostPageClassFor($class)
+                hostPageClass: (string) ElementalSupport::hostPageClassFor($class),
+                emailUsages: $emailUsages
             );
         }
 
@@ -109,7 +115,8 @@ class BlockTypeCollector
             $example['editFormUrl'],
             ElementalSupport::taskEndpointUrl(BlockRenderer::PARAM, $id),
             !$example['published'],
-            $example['pageId']
+            $example['pageId'],
+            emailUsages: $emailUsages
         );
     }
 

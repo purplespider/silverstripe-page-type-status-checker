@@ -6,6 +6,7 @@ use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\BlockCreator;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
+use PurpleSpider\PageTypeTester\Model\EmailUsage;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\PageCreator;
 use PurpleSpider\PageTypeTester\PageDeleter;
@@ -153,6 +154,7 @@ class HtmlReport
             'spinner' => 'M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8z',
             'check-double' => 'M18 7 16.6 5.6 9 13.2l1.4 1.4zM22.2 5.6 10.4 17.4l-4.6-4.6L4.4 14.2l6 6 13.2-13.2z'
                 . 'M0 14.2l6 6 1.4-1.4-6-6z',
+            'mail' => 'M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4-8 5-8-5V6l8 5 8-5z',
             'external' => 'M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2zM14 3v2h3.6l-9.8'
                 . ' 9.8 1.4 1.4L19 6.4V10h2V3z',
         ];
@@ -297,7 +299,8 @@ class HtmlReport
         // Actions and detected forms share one list, each filled in by the script.
         $actionsContainer = "<div class='ptl-actions-container'>"
             . "<span id='actions-container-{$row->index}' class='ptl-actions-part'></span>"
-            . "<span id='forms-container-{$row->index}' class='ptl-actions-part'></span></div>";
+            . "<span id='forms-container-{$row->index}' class='ptl-actions-part'></span>"
+            . $this->emailPart($row->emailUsages) . "</div>";
 
         // Only pages this report created can be deleted again, so only those get a button.
         $deleteButton = in_array((int) $row->page->ID, $this->createdPageIds, true)
@@ -385,19 +388,30 @@ class HtmlReport
     {
         $shortClass = $this->esc($row->shortClass);
 
-        $note = $row->allowedActions
-            ? "<div class='ptl-action-note'>Has actions: " . $this->esc(implode(', ', $row->allowedActions)) . "</div>"
-            : '';
+        // The actions to check once a page exists, listed with the email usages as they
+        // would be on a row with a page. Mirrored by buildEmptyRowHtml in the script.
+        $actions = '';
+        foreach ($row->allowedActions as $action) {
+            $actions .= "<span class='ptl-status'><span class='ptl-action-badge'>" . $this->icon('warning')
+                . " action<span class='ptl-sr-only'>: create a page of this type to check it</span>"
+                . "<span class='ptl-tip ptl-tip-above' aria-hidden='true'>Create a page of this type to check"
+                . " this action</span></span></span>"
+                . "<span class='ptl-action-missing'>/" . $this->esc($action) . "</span>";
+        }
+
+        $button = "<button type='button' class='ptl-create-btn' data-ptl-action='create-page' "
+            . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
+            . $this->icon('plus') . " Create {$shortClass}</button>";
+
+        $list = "<div class='ptl-actions-container'><span class='ptl-actions-part'>{$actions}</span>"
+            . $this->emailPart($row->emailUsages) . "</div>";
 
         return "<tr>"
             . $this->testedCell($row->class, $row->shortClass)
             . "<td class='ptl-preview-col'><div class='ptl-preview-empty'>No preview</div></td>"
             . "<td><span class='ptl-type'>{$shortClass}</span></td>"
             . "<td><span class='ptl-count'>0</span></td>"
-            . "<td colspan='3' style='text-align:center;'>"
-            . "<button type='button' class='ptl-create-btn' data-ptl-action='create-page' "
-            . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
-            . $this->icon('plus') . " Create {$shortClass}</button>{$note}</td>"
+            . "<td colspan='3'><div class='ptl-empty-content'>{$button}{$list}</div></td>"
             . "</tr>";
     }
 
@@ -625,7 +639,7 @@ class HtmlReport
             . "<td>{$count}</td>"
             . "<td>{$editorCell}</td>"
             . "<td>{$formCell}</td>"
-            . "<td>{$frontendCell}</td>"
+            . "<td>{$frontendCell}" . $this->emailList($row->emailUsages) . "</td>"
             . "<td class='ptl-example-cell'><span class='ptl-title'>{$title}{$deleteButton}</span>"
             . "<span class='ptl-subtext'>on " . $this->esc($row->pageTitle) . "</span></td>"
             . "</tr>";
@@ -709,7 +723,7 @@ class HtmlReport
                 . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}' "
                 . "data-ptl-name='" . $this->esc($row->singularName) . "'>"
                 . $this->icon('plus') . " Create {$shortClass}</button>"
-                . ($note === '' ? '' : "<div class='ptl-empty-note'>{$note}</div>");
+                . ($note === '' ? '' : "<span class='ptl-empty-note'>{$note}</span>");
         } else {
             $content = "<span class='ptl-empty-note'>"
                 . ($note === '' ? 'No blocks of this type, and no page type you can create allows one' : $note)
@@ -720,7 +734,8 @@ class HtmlReport
             . $this->testedCell($row->class, $row->shortClass)
             . "<td>" . $this->blockTypeName($row) . "</td>"
             . "<td><span class='ptl-count'>{$row->totalCount}</span></td>"
-            . "<td colspan='4' style='text-align:center;'>{$content}</td>"
+            . "<td colspan='4'><div class='ptl-empty-content'>{$content}"
+            . $this->emailList($row->emailUsages) . "</div></td>"
             . "</tr>";
     }
 
@@ -731,6 +746,55 @@ class HtmlReport
             : '';
 
         return "<span class='ptl-type'>" . $this->esc($row->shortClass) . "</span>{$name}";
+    }
+
+    /**
+     * Where the type's code sends email, as badge and label pairs in the same list as a
+     * page's actions and forms, since those are usually what sends it.
+     *
+     * Rendered here rather than by the script, which has no copy of the usages. The
+     * script fills the other parts of the list but never this one, and moves it across
+     * as it is when it rebuilds a row. It is always output, even empty, so the script
+     * has somewhere to move it to.
+     *
+     * The label is just the method, as the class is usually the type's own controller.
+     * The rest is in the badge's tooltip, which is focusable so the tooltip opens by
+     * keyboard too, and is repeated as hidden text for screen readers.
+     *
+     * @param EmailUsage[] $usages
+     */
+    private function emailPart(array $usages): string
+    {
+        $html = '';
+        foreach ($usages as $usage) {
+            $tip = [$this->esc($usage->getLocation()), $this->esc($usage->file . ':' . $usage->line)];
+            $tip[] = 'Sends with ' . $this->esc($usage->mailer);
+            if ($usage->via) {
+                $tip[] = 'Via ' . $this->esc(implode(' > ', $usage->via));
+            }
+
+            $label = $usage->method === '' ? $usage->className : $usage->method . '()';
+
+            $html .= "<span class='ptl-status'><span class='ptl-email-badge' tabindex='0'>" . $this->icon('mail')
+                . "<span class='ptl-sr-only'>Sends</span> email"
+                . "<span class='ptl-sr-only'>: " . implode('. ', $tip) . ".</span>"
+                . "<span class='ptl-tip ptl-tip-above' aria-hidden='true'>" . implode('<br>', $tip) . "</span>"
+                . "</span></span>"
+                . "<span class='ptl-email-name' aria-hidden='true'>" . $this->esc($label) . "</span>";
+        }
+
+        return "<span class='ptl-actions-part ptl-email-part'>{$html}</span>";
+    }
+
+    /**
+     * The email part in a list of its own, for block types and admin sections, which
+     * have no actions list.
+     *
+     * @param EmailUsage[] $usages
+     */
+    private function emailList(array $usages): string
+    {
+        return "<div class='ptl-actions-container'>" . $this->emailPart($usages) . "</div>";
     }
 
     private function statusPlaceholder(string $id): string
@@ -762,17 +826,28 @@ class HtmlReport
         foreach ($sections as $section) {
             $name = $this->esc($section->name);
 
-            $editCell = "<span class='ptl-url'>&mdash;</span>";
-            if ($section->editLinks) {
-                $editCell = '';
-                foreach ($section->editLinks as $link) {
-                    $editCell .= "<div class='ptl-edit-link'>"
-                        . "<span id='admin-edit-status-{$link->index}' class='ptl-status'>"
-                        . "<span class='ptl-status-placeholder'>?</span></span>"
-                        . "<span class='ptl-edit-model'>" . $this->esc($link->modelName) . "</span>"
-                        . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-                        . $this->esc($link->recordTitle) . "</a></div>";
-                }
+            // Each record's email usages sit beside its edit form, which is where saving
+            // one, and so sending the email, would be tested.
+            $editCell = '';
+            foreach ($section->editLinks as $link) {
+                $editCell .= "<div class='ptl-edit-link'>"
+                    . "<span id='admin-edit-status-{$link->index}' class='ptl-status'>"
+                    . "<span class='ptl-status-placeholder'>?</span></span>"
+                    . "<span class='ptl-edit-model'>" . $this->esc($link->modelName) . "</span>"
+                    . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' class='ptl-cms'>"
+                    . $this->esc($link->recordTitle) . "</a>"
+                    . ($link->emailUsages ? $this->emailList($link->emailUsages) : '') . "</div>";
+            }
+
+            // Models with no edit form to link to, such as one with no records yet.
+            foreach ($section->unlinkedEmailUsages as $modelName => $usages) {
+                $editCell .= "<div class='ptl-edit-link'>"
+                    . "<span class='ptl-edit-model'>" . $this->esc($modelName) . "</span>"
+                    . $this->emailList($usages) . "</div>";
+            }
+
+            if ($editCell === '') {
+                $editCell = "<span class='ptl-url'>&mdash;</span>";
             }
 
             $html .= "<tr>"
@@ -782,7 +857,8 @@ class HtmlReport
                 . "<td><span id='admin-status-{$section->index}' class='ptl-status'>"
                 . "<span class='ptl-status-placeholder'>?</span></span>"
                 . "<a href='" . $this->esc($section->url) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-                . "View<span class='ptl-sr-only'> {$name}</span></a></td>"
+                . "View<span class='ptl-sr-only'> {$name}</span></a>"
+                . $this->emailList($section->emailUsages) . "</td>"
                 . "<td>{$editCell}</td>"
                 . "</tr>";
         }
@@ -832,11 +908,14 @@ class HtmlReport
             . "<li><strong>Blocks</strong> &ndash; where Elemental is installed, one block of each type can be "
             . "summarised in its page's block list in the CMS, its CMS edit form returns 200, and it renders on its own "
             . "with a 200</li>"
+            . "<li><strong>Sends email</strong> &ndash; page types, block types and admin sections whose code "
+            . "sends email are flagged, with where it happens, so you know which forms to submit and which inboxes "
+            . "to check. This reads the code rather than running it, so nothing is sent</li>"
             . "</ul></div>"
             . "<div class='ptl-help-section'>"
             . "<h3>What it does not check</h3>"
             . "<ul>"
-            . "<li>Form submissions or validation</li>"
+            . "<li>Form submissions or validation, or whether emails arrive</li>"
             . "<li>JavaScript behaviour or console errors</li>"
             . "<li>Visual rendering or layout</li>"
             . "<li>Links within page content</li>"

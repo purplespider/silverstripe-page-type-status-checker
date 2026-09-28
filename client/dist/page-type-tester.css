@@ -384,7 +384,7 @@ p.ptl-desc {
     border-top-color: #343a40;
 }
 
-:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-delete-btn, .ptl-form-badge, .ptl-check-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
+:is(.ptl-btn-wrap, .ptl-count, .ptl-btn-actions, .ptl-delete-btn, .ptl-form-badge, .ptl-check-badge, .ptl-action-badge, .ptl-email-badge):is(:hover, :focus, :focus-within) > .ptl-tip {
     display: block;
 }
 
@@ -620,10 +620,6 @@ p.ptl-desc {
     font-size: 13px;
 }
 
-div.ptl-empty-note {
-    margin-top: 6px;
-}
-
 .ptl-title {
     color: #343a40;
     font-size: 14px;
@@ -764,9 +760,10 @@ button.ptl-status-login {
     align-items: center;
     justify-content: start;
     justify-items: start;
+    text-align: left;
 }
 
-.ptl-actions-container :is(button.ptl-status-badge, .ptl-status-placeholder, a.ptl-form-badge, .ptl-check-badge, .ptl-btn-actions) {
+.ptl-actions-container :is(button.ptl-status-badge, .ptl-status-placeholder, a.ptl-form-badge, .ptl-check-badge, .ptl-email-badge, .ptl-btn-actions) {
     padding: 1px 6px;
     font-size: 11px;
 }
@@ -797,23 +794,75 @@ button.ptl-status-login {
     text-decoration: underline;
 }
 
+/*
+ * Where the type's code sends email. Blue rather than the amber of the manual-check
+ * badges, as it says what to test rather than that something is unfinished. Text is
+ * 8:1 on the tint and the border 5:1 on white.
+ */
+.ptl-email-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #e7f1fb;
+    color: #0a4a7a;
+    border: 1px solid var(--ptl-primary);
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    position: relative;
+    cursor: help;
+}
+
+/* Several lines, so left aligned, including in the centred cells of the Create rows. */
+.ptl-email-badge > .ptl-tip {
+    text-align: left;
+    line-height: 1.5;
+}
+
 .ptl-action-missing,
-.ptl-form-name {
+.ptl-form-name,
+.ptl-email-name {
     color: var(--ptl-muted);
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
     font-size: 12px;
 }
 
-.ptl-action-note {
-    margin-top: 8px;
-    margin-left: 8px;
-    font-size: 11px;
-    color: #6b5203;
-    background: #fff3cd;
-    border: 1px solid var(--ptl-warn);
-    padding: 4px 8px;
+/*
+ * A row with nothing to check yet: its Create button, then the actions it will check
+ * and where it sends email, on one line from the left. Centring them made each row's
+ * items start somewhere different.
+ */
+.ptl-empty-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+}
+
+.ptl-empty-content > .ptl-actions-container {
+    margin-top: 0;
+}
+
+/*
+ * An action on a type with no page yet. Amber like the other manual checks, as it
+ * still needs testing: a page has to be created first. A separate class from the
+ * check badge, which the script counts in the manual total.
+ */
+.ptl-action-badge {
+    padding: 1px 6px;
     border-radius: 4px;
-    display: inline-block;
+    background: #fff3cd;
+    color: #6b5203;
+    border: 1px solid var(--ptl-warn);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .ptl-btn-actions {
@@ -1042,7 +1091,7 @@ button.ptl-status-login {
 }
 
 /* Ticking a row means its manual checks are done, so they stop asking for attention. */
-.ptl-table tbody tr.ptl-is-tested :is(.ptl-form-badge, .ptl-check-badge, .ptl-action-note) {
+.ptl-table tbody tr.ptl-is-tested :is(.ptl-form-badge, .ptl-check-badge, .ptl-action-badge, .ptl-email-badge) {
     background: #e9ecef;
     color: var(--ptl-muted-on-grey);
     border-color: var(--ptl-border);
@@ -1112,6 +1161,7 @@ button.ptl-status-login {
 
 .ptl-edit-link {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 5px 0;
@@ -1119,6 +1169,11 @@ button.ptl-status-login {
 
 .ptl-edit-link + .ptl-edit-link {
     border-top: 1px solid #f0f0f0;
+}
+
+/* A record's email usages, on the line with its edit form. */
+.ptl-edit-link > .ptl-actions-container {
+    margin: 0 0 0 10px;
 }
 
 .ptl-edit-link a.ptl-cms {

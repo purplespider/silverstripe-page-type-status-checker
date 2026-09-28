@@ -2,6 +2,7 @@
 
 namespace PurpleSpider\PageTypeTester\Collector;
 
+use PurpleSpider\PageTypeTester\EmailUsageFinder;
 use PurpleSpider\PageTypeTester\Model\AdminEditLink;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use ReflectionProperty;
@@ -17,6 +18,7 @@ use SilverStripe\Forms\GridField\GridField;
 use SilverStripe\Forms\GridField\GridFieldDetailForm;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Security;
+use SilverStripe\SiteConfig\SiteConfig;
 use SilverStripe\View\Requirements;
 use SilverStripe\View\Requirements_Backend;
 use Throwable;
@@ -26,6 +28,13 @@ use Throwable;
  */
 class AdminSectionCollector
 {
+    private readonly EmailUsageFinder $emailFinder;
+
+    public function __construct(?EmailUsageFinder $emailFinder = null)
+    {
+        $this->emailFinder = $emailFinder ?? new EmailUsageFinder();
+    }
+
     /**
      * @return AdminSection[]
      */
@@ -57,30 +66,50 @@ class AdminSectionCollector
 
             $shortClass = ClassInfo::shortName($adminClass);
             $menuTitle = Config::inst()->get($adminClass, 'menu_title');
+            $managedModels = $this->managedModels($adminClass);
+            $editLinks = $this->editLinksFor($adminClass, $managedModels, $editIndex);
+
+            // A record's email usages go with its edit link. Those with no link, such as
+            // a model with no records yet, are listed by model name instead.
+            $modelClasses = $this->modelClasses($managedModels);
+            $unlinked = [];
+            foreach ($modelClasses as $modelClass) {
+                if (isset($editLinks[$modelClass])) {
+                    continue;
+                }
+                $usages = $this->emailFinder->forModel($modelClass);
+                if ($usages) {
+                    $unlinked[ClassInfo::shortName($modelClass)] = $usages;
+                }
+            }
 
             $sections[] = new AdminSection(
                 (string) ($menuTitle ?: $shortClass),
                 'ModelAdmin',
                 Controller::join_links($baseUrl, 'admin', $urlSegment),
                 $index++,
-                $this->editLinksFor($adminClass, $editIndex)
+                array_values($editLinks),
+                $this->emailFinder->forAdmin($adminClass, $modelClasses),
+                $unlinked
             );
         }
 
+        // The settings screen is SiteConfig's edit form, so its usages go with the section.
         $sections[] = new AdminSection(
             'Settings',
             'Settings',
             Controller::join_links($baseUrl, 'admin/settings'),
-            $index
+            $index,
+            emailUsages: class_exists(SiteConfig::class) ? $this->emailFinder->forModel(SiteConfig::class) : []
         );
 
         return $sections;
     }
 
     /**
-     * @return AdminEditLink[]
+     * The admin's tabs, as getManagedModels() gives them.
      */
-    private function editLinksFor(string $adminClass, int &$editIndex): array
+    private function managedModels(string $adminClass): array
     {
         // Admins that work out their tabs at runtime rather than from config, such as
         // ArchiveAdmin with a tab per versioned class, are not checked record by record.
@@ -89,11 +118,33 @@ class AdminSectionCollector
         }
 
         try {
-            $managedModels = Injector::inst()->get($adminClass)->getManagedModels();
+            return Injector::inst()->get($adminClass)->getManagedModels();
         } catch (Throwable) {
             return [];
         }
+    }
 
+    /**
+     * @return string[]
+     */
+    private function modelClasses(array $managedModels): array
+    {
+        $classes = [];
+        foreach ($managedModels as $tab => $spec) {
+            $dataClass = $spec['dataClass'] ?? $tab;
+            if (class_exists($dataClass)) {
+                $classes[] = $dataClass;
+            }
+        }
+
+        return array_values(array_unique($classes));
+    }
+
+    /**
+     * @return array<string, AdminEditLink> Keyed by model class.
+     */
+    private function editLinksFor(string $adminClass, array $managedModels, int &$editIndex): array
+    {
         $links = [];
         foreach ($managedModels as $tab => $spec) {
             $dataClass = $spec['dataClass'] ?? $tab;
@@ -115,11 +166,12 @@ class AdminSectionCollector
                 continue;
             }
 
-            $links[] = new AdminEditLink(
+            $links[$dataClass] = new AdminEditLink(
                 ClassInfo::shortName($dataClass),
                 Director::absoluteURL($grid->Link('item/' . $record->ID)),
                 (string) ($record->getTitle() ?: '(untitled)'),
-                $editIndex++
+                $editIndex++,
+                $this->emailFinder->forModel($dataClass)
             );
         }
 

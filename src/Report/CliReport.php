@@ -6,6 +6,7 @@ use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\CheckResult;
+use PurpleSpider\PageTypeTester\Model\EmailUsage;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use PurpleSpider\PageTypeTester\UrlChecker;
 use SilverStripe\Control\Director;
@@ -83,11 +84,14 @@ class CliReport
     private function renderPageType(PolyOutput $output, PageTypeRow $row): void
     {
         if (!$row->hasPage()) {
-            $output->writeForAnsi("<comment>{$row->shortClass}</comment> (0): no pages to check\n");
+            $output->writeForAnsi("<comment>{$row->shortClass}</comment> (0): no pages to check");
+            $this->renderEmailUsages($output, $row->emailUsages);
+            $output->writeForAnsi("\n");
             return;
         }
 
         $output->writeForAnsi("<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
+        $this->renderEmailUsages($output, $row->emailUsages);
 
         $frontendResult = $this->checker->check($row->frontendLink);
         $this->report($output, 'Frontend', $row->shortClass, $row->frontendLink, $frontendResult, $row->expectedStatus);
@@ -111,11 +115,14 @@ class CliReport
     private function renderBlockType(PolyOutput $output, BlockTypeRow $row): void
     {
         if (!$row->hasElement()) {
-            $output->writeForAnsi("<comment>{$row->shortClass}</comment> ({$row->totalCount}): no blocks to check\n");
+            $output->writeForAnsi("<comment>{$row->shortClass}</comment> ({$row->totalCount}): no blocks to check");
+            $this->renderEmailUsages($output, $row->emailUsages);
+            $output->writeForAnsi("\n");
             return;
         }
 
         $output->writeForAnsi("<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
+        $this->renderEmailUsages($output, $row->emailUsages);
 
         $checks = [
             'CMS Summary' => $row->editorCheckUrl,
@@ -135,6 +142,22 @@ class CliReport
         }
 
         $output->writeForAnsi("\n");
+    }
+
+    /**
+     * Not a check, so not counted: a pointer to what to test by hand, since a page can
+     * answer 200 while its emails never arrive.
+     *
+     * @param EmailUsage[] $usages
+     */
+    private function renderEmailUsages(PolyOutput $output, array $usages, string $indent = '  '): void
+    {
+        foreach ($usages as $usage) {
+            $output->writeForAnsi(
+                "\n{$indent}<fg=cyan>✉</> Sends email: " . OutputFormatter::escape($usage->getLocation())
+                . ' <comment>(' . OutputFormatter::escape($usage->getDetail()) . ')</comment>'
+            );
+        }
     }
 
     /**
@@ -192,6 +215,12 @@ class CliReport
     private function renderAdminSection(PolyOutput $output, AdminSection $section): void
     {
         $output->writeForAnsi("<info>{$section->name}</info> ({$section->type}):");
+        $this->renderEmailUsages($output, $section->emailUsages);
+
+        // Records with no edit form to report them under, such as a model with no records.
+        foreach ($section->unlinkedEmailUsages as $usages) {
+            $this->renderEmailUsages($output, $usages);
+        }
 
         $result = $this->checker->check($section->url);
         $this->report($output, 'Section', $section->name, $section->url, $result, [200], $section->type);
@@ -207,6 +236,7 @@ class CliReport
                 [200],
                 'Edit Form'
             );
+            $this->renderEmailUsages($output, $editLink->emailUsages, '    ');
         }
 
         $output->writeForAnsi("\n");

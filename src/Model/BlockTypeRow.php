@@ -11,7 +11,8 @@ use SilverStripe\ORM\DataObject;
  * row's index addresses its status placeholders in the markup.
  *
  * pageId is the example block's page, so a block this report created can be deleted
- * along with it. hostPageClass is only set on rows with no example block.
+ * along with it. hostPageClass is only set on rows with no example block. emailUsages
+ * holds EmailUsage objects, for where the type's code sends email.
  *
  * The block is typed as a DataObject so this class does not name Elemental, which is
  * optional.
@@ -35,7 +36,8 @@ class BlockTypeRow
         public readonly string $frontendUrl = '',
         public readonly bool $frontendNeedsLogin = false,
         public readonly int $pageId = 0,
-        public readonly string $hostPageClass = ''
+        public readonly string $hostPageClass = '',
+        public readonly array $emailUsages = []
     ) {
     }
 

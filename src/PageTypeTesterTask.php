@@ -26,6 +26,7 @@ use Symfony\Component\Console\Input\InputOption;
  *  - Collector\AdminSectionCollector  finding ModelAdmin sections and their edit forms
  *  - UrlChecker                       performing the HTTP checks
  *  - ActionLinkFinder                 locating URLs for $allowed_actions
+ *  - EmailUsageFinder                 finding the code that sends email for each type
  *  - Report\CliReport                 the terminal report
  *  - Report\HtmlReport                the browser report
  *  - PageCreator                      the "create a page of this type" endpoint
@@ -141,9 +142,12 @@ class PageTypeTesterTask extends BuildTask
         $checker = new UrlChecker($this->resolveVerifySsl($input));
         $actionFinder = new ActionLinkFinder();
 
-        $rows = (new PageTypeCollector($randomise))->collect();
-        $blockRows = $skipBlocks ? [] : (new BlockTypeCollector($randomise))->collect();
-        $adminSections = $skipAdmin ? [] : (new AdminSectionCollector())->collect();
+        // Shared, so a file reached from several types is only read once.
+        $emailFinder = new EmailUsageFinder();
+
+        $rows = (new PageTypeCollector($randomise, $emailFinder))->collect();
+        $blockRows = $skipBlocks ? [] : (new BlockTypeCollector($randomise, $emailFinder))->collect();
+        $adminSections = $skipAdmin ? [] : (new AdminSectionCollector($emailFinder))->collect();
 
         $createdPageIds = CreatedPageRegistry::forCurrentRequest()->existing();
 

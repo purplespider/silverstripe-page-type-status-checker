@@ -16,6 +16,7 @@ class PageTypeRow
      * @param string[] $allowedActions
      * @param int[] $expectedStatus
      * @param string[] $blockListUrls The page's Elemental block lists, checked with its CMS URL.
+     * @param EmailUsage[] $emailUsages Where the type's code sends email.
      */
     public function __construct(
         public readonly string $class,
@@ -30,7 +31,8 @@ class PageTypeRow
         public readonly string $cmsLink = '',
         public readonly string $frontendLink = '',
         public readonly string $pageUrl = '',
-        public readonly array $blockListUrls = []
+        public readonly array $blockListUrls = [],
+        public readonly array $emailUsages = []
     ) {
     }
 
