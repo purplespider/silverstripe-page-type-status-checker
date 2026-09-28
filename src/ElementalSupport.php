@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester;
 
 use DNADesign\Elemental\Controllers\ElementalAreaController;
+use DNADesign\Elemental\Forms\ElementalAreaField;
 use DNADesign\Elemental\Models\BaseElement;
 use DNADesign\Elemental\Models\ElementalArea;
 use Page;
@@ -16,6 +17,7 @@ use SilverStripe\Control\HTTPResponse;
 use SilverStripe\Control\HTTPResponse_Exception;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
+use SilverStripe\Forms\FormField;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Permission;
 use SilverStripe\Security\Security;
@@ -63,6 +65,14 @@ class ElementalSupport
         }
 
         return $page->getElementalRelations() ?: [];
+    }
+
+    /**
+     * True for the blocks editor on a page's edit form, which is a GridField.
+     */
+    public static function isAreaField(FormField $field): bool
+    {
+        return static::isInstalled() && $field instanceof ElementalAreaField;
     }
 
     /**

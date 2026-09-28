@@ -633,7 +633,8 @@
             }
         }
 
-        var screenFailures = result.status === 200 && !result.loginRequired ? await checkCmsScreens(row) : [];
+        var formLoaded = result.status === 200 && !result.loginRequired;
+        var screenFailures = formLoaded ? await checkCmsScreens(row) : [];
 
         if (state.stopRequested) {
             span.innerHTML = '';
@@ -645,6 +646,107 @@
         renderScreenFailures(span, screenFailures);
         recordResult(result, [200]);
         state.totals.failed += screenFailures.length;
+
+        await checkGridForms(row, formLoaded);
+    }
+
+    /**
+     * The forms in each of the page's GridField cards, in turn. They open from the edit
+     * form, so they are only checked once it has loaded.
+     */
+    async function checkGridForms(row, formLoaded) {
+        var grids = row.gridFields || [];
+        var summary = el('grid-summary-status-' + row.index);
+        if (summary && formLoaded) {
+            summary.innerHTML = placeholder('...');
+        }
+
+        for (var g = 0; g < grids.length; g++) {
+            for (var f = 0; f < grids[g].forms.length; f++) {
+                if (state.stopRequested) {
+                    updateGridSummary(row, false);
+                    return;
+                }
+
+                var span = el('grid-status-' + row.index + '-' + g + '-' + f);
+                if (!span) {
+                    continue;
+                }
+
+                if (!formLoaded) {
+                    span.innerHTML = '<span class="ptl-status-placeholder"'
+                        + ' title="Not checked, as the edit form did not load.">&ndash;</span>';
+                    continue;
+                }
+
+                await checkGridForm(row, g, f, false);
+            }
+        }
+
+        updateGridSummary(row, true);
+    }
+
+    async function checkGridForm(row, g, f, updateSummary) {
+        var span = el('grid-status-' + row.index + '-' + g + '-' + f);
+        var form = row.gridFields[g].forms[f];
+
+        span.innerHTML = placeholder('...');
+        var result = await checkCmsLink(form.url);
+
+        if (state.stopRequested) {
+            span.innerHTML = placeholder('?');
+            return;
+        }
+
+        span.innerHTML = statusBadge(result, [200], 'grid:' + row.index + ':' + g + ':' + f);
+        recordResult(result, [200]);
+
+        if (updateSummary) {
+            updateGridSummary(row, false);
+        }
+    }
+
+    /**
+     * One status for all of the page's grids, on the line that opens them. Read back
+     * from their badges, so a single re-check updates it too.
+     *
+     * A failure opens the cards. A full run also closes them again when everything
+     * passes, but a single re-check never does, as somebody is looking at them.
+     */
+    function updateGridSummary(row, closeIfPassed) {
+        var details = el('grid-details-' + row.index);
+        var summary = el('grid-summary-status-' + row.index);
+        if (!details || !summary) {
+            return;
+        }
+
+        var failed = details.querySelectorAll('.ptl-status-fail, .ptl-status-redirect').length;
+        var login = details.querySelectorAll('.ptl-status-login').length;
+        var passed = details.querySelectorAll('.ptl-status-pass').length;
+        var total = (row.gridFields || []).reduce(function (sum, grid) {
+            return sum + grid.forms.length;
+        }, 0);
+
+        if (failed) {
+            summary.innerHTML = '<span class="ptl-grid-state ptl-grid-state-fail">' + icon('cross') + ' '
+                + failed + ' of ' + total + ' failed</span>';
+        } else if (login) {
+            summary.innerHTML = '<span class="ptl-grid-state ptl-grid-state-login">' + icon('lock')
+                + ' log in</span>';
+        } else if (passed === total) {
+            summary.innerHTML = '<span class="ptl-grid-state ptl-grid-state-pass">200 ' + icon('check')
+                + '<span class="ptl-sr-only">' + (total === 1 ? ', its one form' : ', all ' + total + ' forms')
+                + '</span></span>';
+        } else {
+            // Not checked, as the edit form did not load, or the run was stopped.
+            summary.innerHTML = placeholder(details.querySelector('[title^="Not checked"]') ? '–' : '?');
+        }
+
+        if (failed) {
+            details.open = true;
+        } else if (closeIfPassed) {
+            details.open = false;
+        }
     }
 
     // On a line of their own under the cell, so they do not push its link aside.
@@ -659,10 +761,11 @@
             return;
         }
 
+        // Straight after the edit form's link, above any GridField cards.
         if (!holder) {
             holder = document.createElement('div');
             holder.className = 'ptl-screen-badges';
-            cell.appendChild(holder);
+            span.closest('.ptl-link-cell').after(holder);
         }
 
         holder.innerHTML = failures.map(screenBadge).join('');
@@ -1030,7 +1133,8 @@
                 expected: result.expectedStatus,
                 actions: result.allowedActions || [],
                 blockListUrls: result.blockListUrls || [],
-                cmsScreenChecks: result.cmsScreenChecks || []
+                cmsScreenChecks: result.cmsScreenChecks || [],
+                gridFields: result.gridFields || []
             };
             rows.push(newRow);
             rememberCreatedPage(result.id);
@@ -1065,7 +1169,7 @@
                 '<span id="cms-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
                 cellLink(result.editLink, 'Edit in CMS', newRow.shortClass, 'ptl-cms', 'desktop',
                     ['This CMS', 'edit ' + newRow.shortClass + ' on this site'])
-            ) + '</td>'
+            ) + gridCardsHtml(newRow) + '</td>'
             + '<td>' + linkCell(
                 '<span id="frontend-status-' + newRow.index + '" class="ptl-status">' + placeholder('?') + '</span>',
                 cellLink(result.frontendLink, 'View Page', newRow.shortClass, 'ptl-frontend', 'desktop',
@@ -1090,6 +1194,44 @@
         if (emailPart && slot) {
             slot.replaceWith(emailPart);
         }
+    }
+
+    // Mirrors HtmlReport::gridCards.
+    function gridCardsHtml(row) {
+        var grids = row.gridFields || [];
+        if (!grids.length) {
+            return '';
+        }
+
+        return '<details id="grid-details-' + row.index + '" class="ptl-grid-details">'
+            + '<summary class="ptl-grid-summary">'
+            + '<span id="grid-summary-status-' + row.index + '" class="ptl-status">' + placeholder('?') + '</span>'
+            + ' ' + grids.length + (grids.length === 1 ? ' GridField' : ' GridFields') + '</summary>'
+            + gridCardListHtml(row) + '</details>';
+    }
+
+    function gridCardListHtml(row) {
+        return (row.gridFields || []).map(function (grid, g) {
+            var items = grid.forms.map(function (form, f) {
+                var model = escapeHtml(form.model);
+                var label = form.isNew
+                    ? icon('plus') + '<span class="ptl-add-form-text">Add form'
+                        + '<span class="ptl-sr-only"> for a new ' + model + '</span></span>'
+                    : escapeHtml(form.title);
+
+                return '<span id="grid-status-' + row.index + '-' + g + '-' + f + '" class="ptl-status">'
+                    + placeholder('?') + '</span>'
+                    + '<a href="' + escapeHtml(form.url) + '" target="_blank" rel="noopener" class="'
+                    + (form.isNew ? 'ptl-add-form' : 'ptl-grid-record') + '">' + label + '</a>'
+                    + '<span class="ptl-edit-model">' + model + '</span>';
+            }).join('');
+
+            var title = escapeHtml(grid.title);
+
+            return '<div class="ptl-actions-container ptl-grid-card" role="group" aria-label="' + title + ' GridField">'
+                + '<span class="ptl-grid-title" aria-hidden="true">' + title + '</span>'
+                + '<span class="ptl-actions-part">' + items + '</span></div>';
+        }).join('');
     }
 
     // Mirrors HtmlReport::emailPart, empty, for replaceRowCells to fill.
@@ -1733,6 +1875,11 @@
             var block = findBlock(index);
             if (block) {
                 await checkBlockCell(block, kind.slice('block-'.length));
+            }
+        } else if (kind === 'grid') {
+            var gridRow = findRow(index);
+            if (gridRow) {
+                await checkGridForm(gridRow, parseInt(parts[2], 10), parseInt(parts[3], 10), true);
             }
         } else if (kind === 'action') {
             var row = findRow(index);

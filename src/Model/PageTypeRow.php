@@ -19,6 +19,8 @@ class PageTypeRow
      * @param EmailUsage[] $emailUsages Where the type's code sends email.
      * @param array<int, array{label: string, url: string, link: string}> $cmsScreenChecks The page's other
      *        CMS screens, such as Settings, only reported when they fail.
+     * @param array<int, array{title: string, forms: array<int, array{model: string, title: string, url: string, isNew: bool}>}> $gridFields
+     *        The GridFields on the page's edit form, each with the record and add forms to check.
      */
     public function __construct(
         public readonly string $class,
@@ -35,7 +37,8 @@ class PageTypeRow
         public readonly string $pageUrl = '',
         public readonly array $blockListUrls = [],
         public readonly array $emailUsages = [],
-        public readonly array $cmsScreenChecks = []
+        public readonly array $cmsScreenChecks = [],
+        public readonly array $gridFields = []
     ) {
     }
 

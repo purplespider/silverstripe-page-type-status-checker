@@ -836,6 +836,139 @@ button.ptl-status-login {
     display: none;
 }
 
+/*
+ * A GridField on the page's edit form: its name across the top, then a row for each
+ * form checked in it, status first as with the actions, then the class it was built
+ * for. One card per grid, so each grid's records stay together.
+ */
+.ptl-grid-card {
+    grid-template-columns: auto auto auto;
+}
+
+.ptl-grid-card + .ptl-grid-card {
+    margin-top: 6px;
+}
+
+/*
+ * The cards fold away under one line with a single status for them all, as they
+ * usually pass. The script opens them when one fails.
+ */
+.ptl-grid-details {
+    margin-top: 8px;
+}
+
+.ptl-grid-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px 2px 0;
+    border-radius: 4px;
+    color: var(--ptl-muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    list-style: none;
+}
+
+.ptl-grid-summary::-webkit-details-marker {
+    display: none;
+}
+
+/* A chevron that turns when open, standing in for the marker hidden above. */
+.ptl-grid-summary::after {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    margin-left: 1px;
+}
+
+.ptl-grid-details[open] > .ptl-grid-summary::after {
+    transform: rotate(45deg) translate(-2px, -1px);
+}
+
+.ptl-grid-summary:hover {
+    color: var(--ptl-text);
+}
+
+.ptl-wrap .ptl-grid-summary:focus-visible {
+    outline: 3px solid var(--ptl-focus);
+    outline-offset: 2px;
+}
+
+.ptl-wrap .ptl-grid-summary:focus:not(:focus-visible) {
+    outline: none;
+}
+
+.ptl-grid-summary .ptl-status {
+    margin-right: 0;
+}
+
+.ptl-grid-summary .ptl-status-placeholder {
+    min-width: 40px;
+    padding: 1px 6px;
+    font-size: 11px;
+}
+
+.ptl-grid-details > .ptl-grid-card:first-of-type {
+    margin-top: 6px;
+}
+
+/* Not a button, as a summary cannot hold one, so styled to match the badges. */
+.ptl-grid-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 40px;
+    padding: 1px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    box-sizing: border-box;
+}
+
+.ptl-grid-state-pass {
+    background: var(--ptl-pass);
+    color: #fff;
+}
+
+.ptl-grid-state-fail {
+    background: var(--ptl-fail);
+    color: #fff;
+}
+
+.ptl-grid-state-login {
+    background: #fff3cd;
+    color: #6b5203;
+    border-color: var(--ptl-warn);
+}
+
+.ptl-grid-title {
+    grid-column: 1 / -1;
+    color: var(--ptl-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ptl-table a.ptl-grid-record {
+    color: var(--ptl-text);
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.ptl-table .ptl-grid-card a.ptl-add-form {
+    font-size: 12px;
+}
+
+.ptl-grid-card .ptl-edit-model {
+    padding: 1px 6px;
+    font-size: 10px;
+}
+
 .ptl-table a.ptl-action {
     color: var(--ptl-muted);
     font-family: 'SF Mono', Monaco, 'Courier New', monospace;
@@ -1255,28 +1388,28 @@ button.ptl-status-login {
 }
 
 /*
- * The form for a new record. Outlined and dashed rather than a plain link, so it
- * does not read as another record.
+ * The form for a new record. A plain link like the records beside it, marked by its
+ * plus icon and italics rather than a border, which looked like a control half
+ * switched on. The icon stays unlined so it does not read as part of the text.
  */
 .ptl-table a.ptl-add-form {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 2px 9px;
-    border: 1px dashed #868e96;
-    border-radius: 4px;
-    color: var(--ptl-muted);
+    /* The plus already has space around it inside its own box. */
+    gap: 1px;
+    color: var(--ptl-text);
     font-size: 13px;
-    font-weight: 500;
     text-decoration: none;
     white-space: nowrap;
 }
 
-.ptl-table a.ptl-add-form:hover {
-    border-style: solid;
-    border-color: var(--ptl-muted);
-    background: #f1f3f5;
-    color: var(--ptl-text);
+.ptl-add-form-text {
+    font-style: italic;
+    text-decoration: underline;
+}
+
+.ptl-table a.ptl-add-form:hover .ptl-add-form-text {
+    text-decoration-thickness: 2px;
 }
 
 .ptl-edit-link a.ptl-cms {

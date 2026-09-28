@@ -3,25 +3,21 @@
 namespace PurpleSpider\PageTypeTester\Collector;
 
 use PurpleSpider\PageTypeTester\EmailUsageFinder;
+use PurpleSpider\PageTypeTester\GridFieldFormFinder;
 use PurpleSpider\PageTypeTester\Model\AdminEditLink;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use ReflectionProperty;
 use SilverStripe\Admin\ModelAdmin;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
-use SilverStripe\Control\HTTPRequest;
-use SilverStripe\Control\Session;
 use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\GridField\GridField;
-use SilverStripe\Forms\GridField\GridFieldAddNewButton;
 use SilverStripe\Forms\GridField\GridFieldDetailForm;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Security;
 use SilverStripe\SiteConfig\SiteConfig;
-use SilverStripe\View\Requirements;
-use SilverStripe\View\Requirements_Backend;
 use Throwable;
 
 /**
@@ -183,7 +179,7 @@ class AdminSectionCollector
             // The add form builds its fields for an empty record, which is where
             // getCMSFields() code that assumes a saved record falls over. With no
             // record to edit, the model's email usages go with this form instead.
-            if ($this->canAddTo($grid)) {
+            if (GridFieldFormFinder::canAddTo($grid)) {
                 $links[self::ADD_FORM_KEY . $dataClass] = new AdminEditLink(
                     ClassInfo::shortName($dataClass),
                     Director::absoluteURL($grid->Link('item/new')),
@@ -196,29 +192,6 @@ class AdminSectionCollector
         }
 
         return $links;
-    }
-
-    /**
-     * Only grids that offer an Add button, as the add form refuses anybody the button
-     * would be hidden from.
-     */
-    private function canAddTo(GridField $grid): bool
-    {
-        if (!$grid->getConfig()->getComponentByType(GridFieldAddNewButton::class)) {
-            return false;
-        }
-
-        // As with canView() on the sections, only filter by permission when somebody is
-        // logged in, or the CLI report would never list an add form.
-        if (!Security::getCurrentUser()) {
-            return true;
-        }
-
-        try {
-            return (bool) singleton($grid->getModelClass())->canCreate();
-        } catch (Throwable) {
-            return false;
-        }
     }
 
     /**
@@ -240,28 +213,7 @@ class AdminSectionCollector
         (new ReflectionProperty(ModelAdmin::class, 'modelTab'))->setValue($admin, $tab);
         (new ReflectionProperty(ModelAdmin::class, 'modelClass'))->setValue($admin, $dataClass);
 
-        // A fresh GET request, so none of this task's query string reaches the admin,
-        // but with the current session, which pushCurrent() requires.
-        $request = new HTTPRequest('GET', '/');
-        $currentRequest = Controller::curr()?->getRequest();
-        $request->setSession($currentRequest?->hasSession() ? $currentRequest->getSession() : new Session([]));
-        $admin->setRequest($request);
-
-        // Anything the form requires would otherwise end up in this report's page.
-        $requirements = Requirements::backend();
-        Requirements::set_backend(Requirements_Backend::create());
-
-        $admin->pushCurrent();
-        try {
-            $fields = $admin->getEditForm()->Fields()->dataFields();
-        } catch (Throwable) {
-            return null;
-        } finally {
-            $admin->popCurrent();
-            Requirements::set_backend($requirements);
-        }
-
-        $grids = array_filter($fields, fn ($field) => $field instanceof GridField);
+        $grids = GridFieldFormFinder::gridFieldsIn($admin, fn (ModelAdmin $admin) => $admin->getEditForm());
 
         // Prefer ModelAdmin's default field, in case the form has more than one grid.
         return $grids[str_replace('\\', '-', $tab)] ?? reset($grids) ?: null;

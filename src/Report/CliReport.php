@@ -120,6 +120,7 @@ class CliReport
 
         if ($cmsResult->status === 200) {
             $this->renderCmsScreens($output, $row);
+            $this->renderGridForms($output, $row);
         }
 
         $this->renderActions($output, $row, $frontendResult);
@@ -148,6 +149,20 @@ class CliReport
             $failed[$check['label']] = true;
             $this->report($output, "CMS {$check['label']}", $row->shortClass, $check['url'], $result, [200]);
             $this->reportJsonError($output, $result);
+        }
+    }
+
+    /**
+     * The forms in each GridField on the page's edit form. Only found for a logged-in
+     * user, so usually none here.
+     */
+    private function renderGridForms(PolyOutput $output, PageTypeRow $row): void
+    {
+        foreach ($row->gridFields as $grid) {
+            foreach ($grid['forms'] as $form) {
+                $label = "CMS {$grid['title']} " . ($form['isNew'] ? 'add form' : "edit form ({$form['model']})");
+                $this->report($output, $label, $row->shortClass, $form['url'], $this->checker->check($form['url']), [200]);
+            }
         }
     }
 

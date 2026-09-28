@@ -6,6 +6,7 @@ use Page;
 use PurpleSpider\PageTypeTester\ElementalSupport;
 use PurpleSpider\PageTypeTester\EmailUsageFinder;
 use PurpleSpider\PageTypeTester\ExpectedStatus;
+use PurpleSpider\PageTypeTester\GridFieldFormFinder;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use SilverStripe\Admin\AdminRootController;
 use SilverStripe\CMS\Controllers\CMSPageSettingsController;
@@ -187,7 +188,8 @@ class PageTypeCollector
             '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
             ElementalSupport::blockListUrlsFor($page),
             $emailUsages,
-            static::cmsScreenChecksFor($page)
+            static::cmsScreenChecksFor($page),
+            GridFieldFormFinder::gridFieldsFor($page)
         );
     }
 

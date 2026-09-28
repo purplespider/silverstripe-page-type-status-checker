@@ -370,7 +370,7 @@ class HtmlReport
             . $this->esc($row->frontendLink) . "'></iframe></div></td>"
             . "<td><span class='ptl-type'>{$shortClass}</span></td>"
             . "<td>{$count}</td>"
-            . "<td>{$cmsCell}</td>"
+            . "<td>{$cmsCell}{$this->gridCards($row)}</td>"
             . "<td>{$frontendCell}{$actionsContainer}</td>"
             . "<td class='ptl-example-cell'><span class='ptl-title'>" . $this->esc($row->title)
             . $deleteButton . "</span>"
@@ -833,6 +833,60 @@ class HtmlReport
     }
 
     /**
+     * A card for each GridField on the page's edit form, under the edit form's own
+     * status, laid out like the frontend's actions: status, then the form it checked,
+     * then the class it was built for. Mirrored by gridCardsHtml in the script.
+     *
+     * The cards sit in a disclosure, closed, whose summary gives one status for them
+     * all. The script opens it when any of them fails.
+     */
+    private function gridCards(PageTypeRow $row): string
+    {
+        if (!$row->gridFields) {
+            return '';
+        }
+
+        $count = count($row->gridFields);
+        $noun = $count === 1 ? 'GridField' : 'GridFields';
+
+        return "<details id='grid-details-{$row->index}' class='ptl-grid-details'>"
+            . "<summary class='ptl-grid-summary'>"
+            . "<span id='grid-summary-status-{$row->index}' class='ptl-status'>"
+            . "<span class='ptl-status-placeholder'>?</span></span>"
+            . " {$count} {$noun}</summary>"
+            . $this->gridCardList($row) . "</details>";
+    }
+
+    private function gridCardList(PageTypeRow $row): string
+    {
+        $html = '';
+        foreach ($row->gridFields as $g => $grid) {
+            $items = '';
+            foreach ($grid['forms'] as $f => $form) {
+                $model = $this->esc($form['model']);
+
+                // Named for what it opens, with a plus, as on the admin sections.
+                $label = $form['isNew']
+                    ? $this->icon('plus') . "<span class='ptl-add-form-text'>Add form"
+                        . "<span class='ptl-sr-only'> for a new {$model}</span></span>"
+                    : $this->esc($form['title']);
+
+                $items .= $this->statusPlaceholder("grid-status-{$row->index}-{$g}-{$f}")
+                    . "<a href='" . $this->esc($form['url']) . "' target='_blank' rel='noopener' class='"
+                    . ($form['isNew'] ? 'ptl-add-form' : 'ptl-grid-record') . "'>{$label}</a>"
+                    . "<span class='ptl-edit-model'>{$model}</span>";
+            }
+
+            $title = $this->esc($grid['title']);
+            $html .= "<div class='ptl-actions-container ptl-grid-card' role='group' aria-label='{$title} GridField'>"
+                . "<span class='ptl-grid-title' aria-hidden='true'>{$title}</span>"
+                . "<span class='ptl-actions-part'>{$items}</span></div>";
+        }
+
+        return $html;
+    }
+
+    /**
      * @param AdminSection[] $sections
      */
     private function adminTable(array $sections): string
@@ -930,13 +984,13 @@ class HtmlReport
                 $edit = "<span class='ptl-edit-none'>No records</span>";
             }
 
-            // Styled as a form rather than a record, and named for what it opens.
+            // Named for what it opens, with a plus rather than a record title.
             $new = $row['new']
                 ? $this->adminEditItem(
                     $row['new'],
                     "class='ptl-add-form'",
-                    $this->icon('document') . ' Add form'
-                        . "<span class='ptl-sr-only'> for a new " . $this->esc($row['model']) . "</span>"
+                    $this->icon('plus') . "<span class='ptl-add-form-text'>Add form"
+                        . "<span class='ptl-sr-only'> for a new " . $this->esc($row['model']) . "</span></span>"
                 )
                 : '<span></span>';
 
@@ -1019,7 +1073,9 @@ class HtmlReport
             . "<ul>"
             . "<li><strong>CMS edit form</strong> &ndash; the page's CMS edit URL returns HTTP 200. On pages with "
             . "Elemental blocks, the block list the blocks editor loads afterwards must return 200 as well. The "
-            . "page's Settings and History screens are checked too, and only shown when they fail</li>"
+            . "page's Settings and History screens are checked too, and only shown when they fail. Each "
+            . "GridField on the edit form gets a card beneath it, checking the edit form of one record of each "
+            . "class the grid lists, and its add form. The cards stay folded away unless one of them fails</li>"
             . "<li><strong>Frontend</strong> &ndash; the page URL returns its expected status (200, or 404/500 "
             . "for ErrorPage, or a redirect for RedirectorPage). A 200 still fails if the page shows PHP error "
             . "or debug output, unrendered template code or shortcodes, has no title, or stops before "
@@ -1073,6 +1129,7 @@ class HtmlReport
                 'actions' => array_values($row->allowedActions),
                 'blockListUrls' => array_values($row->blockListUrls),
                 'cmsScreenChecks' => $row->cmsScreenChecks,
+                'gridFields' => $row->gridFields,
             ];
         }
 

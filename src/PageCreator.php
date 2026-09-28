@@ -95,6 +95,7 @@ class PageCreator
             'expectedStatus' => ExpectedStatus::forShortName($shortName),
             'blockListUrls' => ElementalSupport::blockListUrlsFor($page),
             'cmsScreenChecks' => PageTypeCollector::cmsScreenChecksFor($page),
+            'gridFields' => GridFieldFormFinder::gridFieldsFor($page),
         ];
     }
 }
