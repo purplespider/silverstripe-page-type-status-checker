@@ -30,7 +30,8 @@ use Symfony\Component\Console\Input\InputOption;
  *  - Report\HtmlReport                the browser report
  *  - PageCreator                      the "create a page of this type" endpoint
  *  - PageDeleter                      the "delete a page this report created" endpoint
- *  - BlockEditorChecker               the "can this block be listed in the editor" endpoint
+ *  - BlockCreator                     the "create a block of this type" endpoint
+ *  - BlockEditorChecker              the "can this block be listed in the editor" endpoint
  *  - BlockRenderer                    the "render this block on its own" endpoint
  */
 class PageTypeTesterTask extends BuildTask
@@ -98,9 +99,13 @@ class PageTypeTesterTask extends BuildTask
             (new PageDeleter())->handle($request, (string) $request->requestVar(PageDeleter::PARAM));
         }
 
-        // These only read, but also answer instead of the report. They name Elemental
-        // classes, so are only reachable where it is installed.
+        // These name Elemental classes, so are only reachable where it is installed.
+        // Creating writes, like the page endpoints; the other two only read.
         if ($request && ElementalSupport::isInstalled()) {
+            if ($request->requestVar(BlockCreator::PARAM)) {
+                (new BlockCreator())->handle($request, (string) $request->requestVar(BlockCreator::PARAM));
+            }
+
             if ($request->getVar(BlockEditorChecker::PARAM)) {
                 (new BlockEditorChecker())->handle($request, (string) $request->getVar(BlockEditorChecker::PARAM));
             }

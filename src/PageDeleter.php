@@ -21,7 +21,9 @@ use Throwable;
  * pre-existing content.
  *
  * Deleting archives the page, which is what the CMS delete button does. It comes off
- * draft and live but stays recoverable, so a misclick is not final.
+ * draft and live but stays recoverable, so a misclick is not final. Any Elemental
+ * blocks on the page are archived with it, which is how the test pages BlockCreator
+ * makes are cleared away.
  */
 class PageDeleter
 {
@@ -72,14 +74,26 @@ class PageDeleter
             }
 
             $className = (string) $page->ClassName;
+
+            // Elemental leaves a deleted page's blocks behind, so they go first. This
+            // includes any test block made to sit on the page.
+            ElementalSupport::archiveElementalAreas($page);
             $page->doArchive();
             $registry->forget($pageId);
 
-            $this->respond([
+            $data = [
                 'success' => true,
                 'id' => $pageId,
                 'remaining' => $this->remainingOfType($className),
-            ], 200);
+            ];
+
+            // A block row asks how many of its type are left, for the same reason.
+            $blockClass = (string) $request->postVar('blockClass');
+            if ($blockClass !== '' && ElementalSupport::isBlockClass($blockClass)) {
+                $data['remainingBlocks'] = $this->remainingOfType($blockClass);
+            }
+
+            $this->respond($data, 200);
         } catch (HTTPResponse_Exception $e) {
             throw $e;
         } catch (Throwable $e) {
@@ -100,8 +114,9 @@ class PageDeleter
     }
 
     /**
-     * How many pages of this type are left, so the report knows whether the row can go
-     * back to its "create one" prompt or should reload to show another example.
+     * How many pages, or blocks, of this type are left, so the report knows whether the
+     * row can go back to its "create one" prompt or should reload to show another
+     * example.
      */
     private function remainingOfType(string $className): int
     {

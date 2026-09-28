@@ -817,6 +817,180 @@
             + ' Recoverable from the CMS archive.</span></button>';
     }
 
+    /* blocks: create and delete */
+
+    /**
+     * A block has to sit on a page, so the server makes a draft test page to hold it
+     * rather than adding it to real content. Deleting the block deletes that page.
+     */
+    async function createBlock(button) {
+        var row = button.closest('tr');
+        var original = button.innerHTML;
+
+        button.disabled = true;
+        button.innerHTML = icon('spinner', 'ptl-spin') + ' Creating...';
+
+        try {
+            var body = new FormData();
+            body.append(config.createBlockParam, button.getAttribute('data-ptl-class'));
+            body.append(config.securityToken.name, config.securityToken.value);
+
+            var response = await fetch(config.taskUrl, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Accept': 'application/json' },
+                body: body
+            });
+
+            var result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed');
+            }
+
+            var block = {
+                index: blocks.length ? Math.max.apply(null, blocks.map(function (b) { return b.index; })) + 1 : 0,
+                class: button.getAttribute('data-ptl-class'),
+                shortClass: result.shortClass,
+                singularName: result.singularName,
+                pageId: result.pageId,
+                editorCheckUrl: result.editorCheckUrl,
+                editFormUrl: result.editFormUrl,
+                frontendUrl: result.frontendUrl,
+                frontendNeedsLogin: result.frontendNeedsLogin
+            };
+            blocks.push(block);
+            rememberCreatedPage(result.pageId);
+
+            row.innerHTML = buildBlockRowHtml(block, result);
+            renderTested();
+
+            if (state.checksHaveRun) {
+                await checkBlockCell(block, 'editor');
+                await checkBlockCell(block, 'form');
+                await checkBlockCell(block, 'frontend');
+                updateSummary(false);
+            }
+        } catch (e) {
+            showButtonError(button, original, e.message);
+        }
+    }
+
+    /**
+     * Mirrors HtmlReport::blockRow. A block created here is not on the live site, so
+     * like a created page row it has no live link and nothing to compare.
+     */
+    function buildBlockRowHtml(block, result) {
+        var draftOnly = Math.max(0, result.totalCount - result.liveCount);
+        var formCell = block.editFormUrl
+            ? linkCell(
+                '<span id="block-form-status-' + block.index + '" class="ptl-status">' + placeholder('?') + '</span>',
+                cellLink(block.editFormUrl, config.comparing ? 'This CMS' : 'Edit Block',
+                    config.comparing ? 'edit ' + block.shortClass + ' on this site' : block.shortClass + ' edit form',
+                    'ptl-cms', 'desktop')
+            )
+            : '<span class="ptl-url">—</span>';
+
+        return testedCellHtml(block)
+            + '<td>' + blockTypeNameHtml(block) + '</td>'
+            + '<td><span class="ptl-count">' + result.liveCount
+            + (draftOnly > 0 ? ' <span class="ptl-count-draft">+ ' + draftOnly + '</span>' : '')
+            + '<span class="ptl-tip ptl-tip-above">' + result.liveCount + ' live, ' + draftOnly
+            + ' draft only</span></span></td>'
+            + '<td>' + linkCell(
+                '<span id="block-editor-status-' + block.index + '" class="ptl-status">' + placeholder('?') + '</span>',
+                cellLink(result.pageCmsLink, 'Edit Page', block.shortClass + ' summary in its page\'s block list',
+                    'ptl-cms', 'desktop')
+            ) + '</td>'
+            + '<td>' + formCell + '</td>'
+            + '<td>' + linkCell(
+                '<span id="block-frontend-status-' + block.index + '" class="ptl-status">' + placeholder('?') + '</span>',
+                cellLink(block.frontendUrl, 'View Block', block.shortClass + ' rendered on its own',
+                    'ptl-frontend', 'desktop')
+            ) + '</td>'
+            + '<td class="ptl-example-cell"><span class="ptl-title">'
+            + (result.pageLink
+                ? '<a href="' + escapeHtml(result.pageLink) + '" target="_blank" rel="noopener">'
+                    + escapeHtml(result.title) + '</a>'
+                : escapeHtml(result.title))
+            + blockDeleteButtonHtml(block, result.title) + '</span>'
+            + '<span class="ptl-subtext">on ' + escapeHtml(result.pageTitle) + '</span></td>';
+    }
+
+    // Mirrors HtmlReport::blockTypeName.
+    function blockTypeNameHtml(block) {
+        var name = block.singularName && block.singularName !== block.shortClass
+            ? '<span class="ptl-subtext">' + escapeHtml(block.singularName) + '</span>'
+            : '';
+
+        return '<span class="ptl-type">' + escapeHtml(block.shortClass) + '</span>' + name;
+    }
+
+    // Mirrors HtmlReport::blockDeleteButton.
+    function blockDeleteButtonHtml(block, title) {
+        return '<button type="button" class="ptl-delete-btn" data-ptl-action="delete-block"'
+            + ' data-ptl-page="' + block.pageId + '" data-ptl-row="' + block.index + '"'
+            + ' aria-label="' + escapeHtml('Delete ' + title + ' and its test page, created by this report') + '">'
+            + icon('trash') + ' Delete'
+            + '<span class="ptl-tip ptl-tip-above">Deletes its test page too.'
+            + ' Recoverable from the CMS archive.</span></button>';
+    }
+
+    // Mirrors HtmlReport::emptyBlockRow, for a type whose only block has just gone.
+    function buildEmptyBlockRowHtml(block) {
+        return testedCellHtml(block)
+            + '<td>' + blockTypeNameHtml(block) + '</td>'
+            + '<td><span class="ptl-count">0</span></td>'
+            + '<td colspan="4" style="text-align:center;">'
+            + '<button type="button" class="ptl-create-btn" data-ptl-action="create-block" data-ptl-class="'
+            + escapeHtml(block.class) + '" data-ptl-short="' + escapeHtml(block.shortClass) + '" data-ptl-name="'
+            + escapeHtml(block.singularName) + '">'
+            + icon('plus') + ' Create ' + escapeHtml(block.shortClass) + '</button></td>';
+    }
+
+    async function deleteBlock(button) {
+        var pageId = parseInt(button.getAttribute('data-ptl-page'), 10);
+        var blockIndex = parseInt(button.getAttribute('data-ptl-row'), 10);
+        var rowEl = button.closest('tr');
+        var block = findBlock(blockIndex);
+        var original = button.innerHTML;
+
+        if (!window.confirm('Delete this block?\n\nIt was created by this report, on a test page of its own, '
+            + 'which is deleted too. Both come off draft and live, and stay recoverable from the CMS archive.')) {
+            return;
+        }
+
+        button.disabled = true;
+        button.innerHTML = icon('spinner', 'ptl-spin') + ' Deleting...';
+
+        try {
+            var result = await postDelete(pageId, block ? block.class : '');
+
+            if (!result.success) {
+                throw new Error(result.error || 'Failed');
+            }
+
+            forgetCreatedPage(pageId);
+
+            // Other blocks of this type exist, so reload to show one as the example.
+            if (result.remainingBlocks > 0 || !block) {
+                window.location.reload();
+                return;
+            }
+
+            releaseRowTotals(rowEl);
+            blocks = blocks.filter(function (b) {
+                return b.index !== blockIndex;
+            });
+            rowEl.innerHTML = buildEmptyBlockRowHtml(block);
+
+            renderTested();
+            updateSummary(false);
+        } catch (e) {
+            showButtonError(button, original, e.message);
+        }
+    }
+
     /* delete */
 
     /**
@@ -909,10 +1083,14 @@
         window.location.reload();
     }
 
-    async function postDelete(pageId) {
+    // blockClass asks the server how many blocks of that type are left afterwards.
+    async function postDelete(pageId, blockClass) {
         var body = new FormData();
         body.append(config.deleteParam, pageId);
         body.append(config.securityToken.name, config.securityToken.value);
+        if (blockClass) {
+            body.append('blockClass', blockClass);
+        }
 
         // POST with a security token, for the same reason as creating: this writes to
         // the database and must not be reachable by following a URL.
@@ -1308,6 +1486,12 @@
                 break;
             case 'create-page':
                 createPage(trigger);
+                break;
+            case 'create-block':
+                createBlock(trigger);
+                break;
+            case 'delete-block':
+                deleteBlock(trigger);
                 break;
             case 'delete-page':
                 deletePage(trigger);

@@ -7,7 +7,6 @@ use PurpleSpider\PageTypeTester\BlockEditorChecker;
 use PurpleSpider\PageTypeTester\BlockRenderer;
 use PurpleSpider\PageTypeTester\ElementalSupport;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
-use ReflectionClass;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
@@ -43,7 +42,7 @@ class BlockTypeCollector
 
         $found = [];
         foreach (ClassInfo::subclassesFor(BaseElement::class) as $class) {
-            if ($class === BaseElement::class || (new ReflectionClass($class))->isAbstract()) {
+            if (!ElementalSupport::isBlockClass($class)) {
                 continue;
             }
 
@@ -82,7 +81,14 @@ class BlockTypeCollector
 
         $example = $data['example'];
         if (!$example) {
-            return new BlockTypeRow($class, $shortClass, $singularName, $data['liveCount'], $data['totalCount']);
+            return new BlockTypeRow(
+                $class,
+                $shortClass,
+                $singularName,
+                $data['liveCount'],
+                $data['totalCount'],
+                hostPageClass: (string) ElementalSupport::hostPageClassFor($class)
+            );
         }
 
         $id = (int) $example['element']->ID;
@@ -102,7 +108,8 @@ class BlockTypeCollector
             ElementalSupport::taskEndpointUrl(BlockEditorChecker::PARAM, $id),
             $example['editFormUrl'],
             ElementalSupport::taskEndpointUrl(BlockRenderer::PARAM, $id),
-            !$example['published']
+            !$example['published'],
+            $example['pageId']
         );
     }
 
@@ -147,8 +154,10 @@ class BlockTypeCollector
 
     /**
      * Resolves everything that depends on the reading stage while it is still set.
+     *
+     * Public for BlockCreator, which describes the block it has just made the same way.
      */
-    private function describe(DataObject $block, DataObject $page, bool $published): array
+    public function describe(DataObject $block, DataObject $page, bool $published): array
     {
         $baseUrl = Director::absoluteBaseURL();
 
@@ -167,6 +176,7 @@ class BlockTypeCollector
             'published' => $published,
             'title' => (string) ($block->Title ?: 'Untitled block #' . $block->ID),
             'pageTitle' => (string) $page->getTitle(),
+            'pageId' => $page instanceof SiteTree ? (int) $page->ID : 0,
             'pageLink' => $pageLink === '' ? '' : (string) Director::absoluteURL($pageLink),
             'pageCmsLink' => $pageCmsLink,
             'editFormUrl' => $editFormLink === '' ? '' : (string) Director::absoluteURL($editFormLink),

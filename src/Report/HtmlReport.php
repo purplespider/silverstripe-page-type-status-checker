@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
+use PurpleSpider\PageTypeTester\BlockCreator;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
@@ -531,7 +532,7 @@ class HtmlReport
             // One span for the label, or the flex gap also lands either side of the count.
             . " <span>Delete Created Pages (<span id='ptl-delete-created-count'>{$count}</span>)</span></button>"
             . "<span class='ptl-tip ptl-tip-below ptl-tip-end'>Deletes every page created here with a Create"
-            . " button</span></span>";
+            . " button, including test pages for blocks</span></span>";
     }
 
     /**
@@ -613,6 +614,10 @@ class HtmlReport
             : "<a href='" . $this->esc($row->pageLink) . "' target='_blank' rel='noopener'>"
                 . $this->esc($row->title) . "</a>";
 
+        // Blocks made by the Create button sit on a test page of their own, which
+        // deleting takes with it.
+        $deleteButton = $this->isCreatedBlock($row) ? $this->blockDeleteButton($row) : '';
+
         return "<tr>"
             . $this->testedCell($row->class, $row->shortClass)
             . "<td>" . $this->blockTypeName($row) . "</td>"
@@ -620,9 +625,28 @@ class HtmlReport
             . "<td>{$editorCell}</td>"
             . "<td>{$formCell}</td>"
             . "<td>{$frontendCell}</td>"
-            . "<td class='ptl-example-cell'><span class='ptl-title'>{$title}</span>"
+            . "<td class='ptl-example-cell'><span class='ptl-title'>{$title}{$deleteButton}</span>"
             . "<span class='ptl-subtext'>on " . $this->esc($row->pageTitle) . "</span></td>"
             . "</tr>";
+    }
+
+    private function isCreatedBlock(BlockTypeRow $row): bool
+    {
+        return $row->pageId > 0 && in_array($row->pageId, $this->createdPageIds, true);
+    }
+
+    /**
+     * Mirrors deleteButton, but for a block. What is deleted is the test page the block
+     * was created on, which archives the block with it.
+     */
+    private function blockDeleteButton(BlockTypeRow $row): string
+    {
+        return "<button type='button' class='ptl-delete-btn' data-ptl-action='delete-block'"
+            . " data-ptl-page='{$row->pageId}' data-ptl-row='{$row->index}'"
+            . " aria-label='" . $this->esc('Delete ' . $row->title . ' and its test page, created by this report')
+            . "'>" . $this->icon('trash') . " Delete"
+            . "<span class='ptl-tip ptl-tip-above'>Deletes its test page too."
+            . " Recoverable from the CMS archive.</span></button>";
     }
 
     /**
@@ -633,7 +657,8 @@ class HtmlReport
      */
     private function blockFormCell(BlockTypeRow $row): string
     {
-        $comparing = $this->liveDomain !== '';
+        // A block created here does not exist on the live site, so has nothing to compare.
+        $comparing = $this->liveDomain !== '' && !$this->isCreatedBlock($row);
 
         $localLink = $this->cellLink(
             $row->editFormUrl,
@@ -668,19 +693,33 @@ class HtmlReport
     }
 
     /**
-     * Blocks cannot be created on their own, only on a page, so unlike an empty page
-     * type row there is nothing to offer here.
+     * Offers to create a block, on a test page of its own, where some page type can
+     * hold one. Mirrored by buildEmptyBlockRowHtml in the script.
      */
     private function emptyBlockRow(BlockTypeRow $row): string
     {
+        $shortClass = $this->esc($row->shortClass);
+
         // Blocks left behind by a deleted page are counted, but cannot be checked.
-        $message = $row->totalCount > 0 ? 'No blocks of this type on a page' : 'No blocks of this type';
+        $note = $row->totalCount > 0 ? 'Existing blocks of this type are not on a page' : '';
+
+        if ($row->canCreate()) {
+            $content = "<button type='button' class='ptl-create-btn' data-ptl-action='create-block' "
+                . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}' "
+                . "data-ptl-name='" . $this->esc($row->singularName) . "'>"
+                . $this->icon('plus') . " Create {$shortClass}</button>"
+                . ($note === '' ? '' : "<div class='ptl-empty-note'>{$note}</div>");
+        } else {
+            $content = "<span class='ptl-empty-note'>"
+                . ($note === '' ? 'No blocks of this type, and no page type you can create allows one' : $note)
+                . "</span>";
+        }
 
         return "<tr>"
             . $this->testedCell($row->class, $row->shortClass)
             . "<td>" . $this->blockTypeName($row) . "</td>"
             . "<td><span class='ptl-count'>{$row->totalCount}</span></td>"
-            . "<td colspan='4' class='ptl-empty-note'>{$message}</td>"
+            . "<td colspan='4' style='text-align:center;'>{$content}</td>"
             . "</tr>";
     }
 
@@ -841,6 +880,8 @@ class HtmlReport
                 'index' => $row->index,
                 'class' => $row->class,
                 'shortClass' => $row->shortClass,
+                'singularName' => $row->singularName,
+                'pageId' => $row->pageId,
                 'editorCheckUrl' => $row->editorCheckUrl,
                 'editFormUrl' => $row->editFormUrl,
                 'frontendUrl' => $row->frontendUrl,
@@ -865,6 +906,7 @@ class HtmlReport
             'directActions' => array_values(ActionLinkFinder::getDirectActions()),
             'createParam' => PageCreator::PARAM,
             'deleteParam' => PageDeleter::PARAM,
+            'createBlockParam' => BlockCreator::PARAM,
             'createdPageIds' => array_values($this->createdPageIds),
             'comparing' => $this->liveDomain !== '',
             'concurrency' => (int) static::config()->get('check_concurrency'),

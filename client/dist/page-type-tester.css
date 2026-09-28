@@ -614,11 +614,14 @@ p.ptl-desc {
     margin-top: 2px;
 }
 
-/* A block type with no example block to check. */
-.ptl-table td.ptl-empty-note {
+/* Why a block type has no example block to check. */
+.ptl-empty-note {
     color: var(--ptl-muted);
-    font-size: 14px;
-    text-align: center;
+    font-size: 13px;
+}
+
+div.ptl-empty-note {
+    margin-top: 6px;
 }
 
 .ptl-title {
@@ -871,6 +874,23 @@ button.ptl-status-login {
     line-height: 1.5;
     vertical-align: 1px;
     cursor: pointer;
+}
+
+/*
+ * Delete buttons sit in the last column, where a centred tooltip runs off the edge of
+ * the panel and is cut off. Anchored to the button's right edge, it opens leftwards
+ * into the table instead.
+ */
+.ptl-delete-btn > .ptl-tip {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+.ptl-delete-btn > .ptl-tip::after {
+    left: auto;
+    right: 20px;
+    transform: none;
 }
 
 .ptl-delete-btn:hover {

@@ -10,6 +10,9 @@ use SilverStripe\ORM\DataObject;
  * As with PageTypeRow, rows with no example block have an index of -1, and every other
  * row's index addresses its status placeholders in the markup.
  *
+ * pageId is the example block's page, so a block this report created can be deleted
+ * along with it. hostPageClass is only set on rows with no example block.
+ *
  * The block is typed as a DataObject so this class does not name Elemental, which is
  * optional.
  */
@@ -30,8 +33,19 @@ class BlockTypeRow
         public readonly string $editorCheckUrl = '',
         public readonly string $editFormUrl = '',
         public readonly string $frontendUrl = '',
-        public readonly bool $frontendNeedsLogin = false
+        public readonly bool $frontendNeedsLogin = false,
+        public readonly int $pageId = 0,
+        public readonly string $hostPageClass = ''
     ) {
+    }
+
+    /**
+     * Rows with no example block can offer to create one when some page type can hold
+     * it. The block goes on a test page of that type.
+     */
+    public function canCreate(): bool
+    {
+        return $this->hostPageClass !== '';
     }
 
     public function hasElement(): bool

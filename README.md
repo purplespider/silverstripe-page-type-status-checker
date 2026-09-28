@@ -11,7 +11,7 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Detects and tests controller `$allowed_actions`
 - Detects forms on pages (flags for manual testing)
 - With [Elemental](https://github.com/silverstripe/silverstripe-elemental) installed, checks one block of each block type: its summary in the CMS block list, its CMS edit form, and how it renders on its own. Also checks each page's block list along with its CMS edit form
-- "Create" buttons to add a test page for any page type that has none, and delete them again afterwards
+- "Create" buttons to add a test page for any page type, or a test block for any block type, that has none, and delete them again afterwards
 - Tick off each page type and admin section as you test it by hand, with a progress count and a filter to hide the ones already done
 - "Open All" buttons above each table, to open that table's CMS or frontend links in new tabs
 - Optional page preview thumbnails
@@ -126,7 +126,9 @@ Use a table's **Clear** button to start that table again, for example before the
 
 Page types with no instances get a "Create" button, so a type can be checked without hand-building a page in the CMS. 
 
-Deleting archives the page.
+Block types with no blocks on a page get one too. A block has to sit on a page, and adding one to an existing page would change real content, so this creates a draft test page to hold it: the most used page type that allows that block. Both stay in draft.
+
+Deleting archives the page, along with any blocks on it. Elemental does not do this itself, so without it a deleted page would leave its blocks behind.
 
 ## License
 
