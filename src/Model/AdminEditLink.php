@@ -3,7 +3,8 @@
 namespace PurpleSpider\PageTypeTester\Model;
 
 /**
- * An edit form for one record within a ModelAdmin section.
+ * An edit form for one record within a ModelAdmin section, or its form for adding a
+ * new record.
  */
 class AdminEditLink
 {
@@ -15,7 +16,8 @@ class AdminEditLink
         public readonly string $url,
         public readonly string $recordTitle,
         public readonly int $index,
-        public readonly array $emailUsages = []
+        public readonly array $emailUsages = [],
+        public readonly bool $isNew = false
     ) {
     }
 }

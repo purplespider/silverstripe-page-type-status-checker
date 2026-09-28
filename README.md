@@ -9,6 +9,8 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Lists all page types with CMS edit and frontend links
 - Automatically checks HTTP status codes for all links
 - Detects and tests controller `$allowed_actions`
+- Fails pages that answer 200 but show PHP errors, debug output, unrendered template code or shortcodes, or have no title
+- Checks each page's Settings and History screens in the CMS, showing them only when they fail
 - Detects forms on pages (flags for manual testing)
 - Flags page types, block types and admin sections whose code sends email, and says where, so you know which forms to submit and which inboxes to check
 - With [Elemental](https://github.com/silverstripe/silverstripe-elemental) installed, checks one block of each block type: its summary in the CMS block list, its CMS edit form, and how it renders on its own. Also checks each page's block list along with its CMS edit form
@@ -89,6 +91,9 @@ PurpleSpider\PageTypeTester\EmailUsageFinder:
 
 - Redirects are **not** followed. A page that redirects is reported with its own status rather than the status of wherever it points, so a page silently redirecting to the home page shows as a failure rather than a pass. The CLI and browser reports agree on this.
 - `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
+- A 200 is not always a pass. A page also fails if it shows PHP error output (Silverstripe's error view, PHP's own, or `Debug::message()`/`Debug::show()` left in the code), unrendered template code (`<% if %>`, `{$Title}`), an unparsed shortcode (`[sitetree_link,id=5]`), has no or an empty `<title>`, or stops before `</html>`. Actions and blocks are searched for the same error output and code. A bare `$Title` is not flagged, as it also matches prices and copy. In dev mode most PHP warnings already answer 500, so this mainly catches what still gets through as a 200.
+- Each page's Settings and History screens in the CMS (`admin/pages/settings/show/{id}`, `admin/pages/history/show/{id}`) are checked along with its edit form. History is also checked through the request that loads its list of versions, as the screen itself answers 200 either way. They are only shown when they fail, as a small badge under the edit form's status.
+- Admin sections check the edit form of one record of each model, and, where the section has an Add button that you can use, the form for a new record. Models that need sudo mode, such as Member and Group, only have an Add button while sudo mode is active, so their add forms are only checked then.
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
 - An action that is a form on the page (the form's id is `Form_{Action}`, or it submits to `.../{Action}`) is shown once, as a "form action" linking to the form, rather than as a separate action to check. `index` is never listed, as it is the page itself.

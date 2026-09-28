@@ -4,6 +4,7 @@ namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
 use PurpleSpider\PageTypeTester\BlockCreator;
+use PurpleSpider\PageTypeTester\Model\AdminEditLink;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\EmailUsage;
@@ -809,9 +810,11 @@ class HtmlReport
     {
         $openAll = ['admin' => 'Open All Sections'];
         foreach ($sections as $section) {
-            if ($section->editLinks) {
-                $openAll['admin-edit'] = 'Open All Edit Forms';
-                break;
+            foreach ($section->editLinks as $link) {
+                if (!$link->isNew) {
+                    $openAll['admin-edit'] = 'Open All Edit Forms';
+                    break 2;
+                }
             }
         }
 
@@ -828,27 +831,9 @@ class HtmlReport
 
             // Each record's email usages sit beside its edit form, which is where saving
             // one, and so sending the email, would be tested.
-            $editCell = '';
-            foreach ($section->editLinks as $link) {
-                $editCell .= "<div class='ptl-edit-link'>"
-                    . "<span id='admin-edit-status-{$link->index}' class='ptl-status'>"
-                    . "<span class='ptl-status-placeholder'>?</span></span>"
-                    . "<span class='ptl-edit-model'>" . $this->esc($link->modelName) . "</span>"
-                    . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-                    . $this->esc($link->recordTitle) . "</a>"
-                    . ($link->emailUsages ? $this->emailList($link->emailUsages) : '') . "</div>";
-            }
-
-            // Models with no edit form to link to, such as one with no records yet.
-            foreach ($section->unlinkedEmailUsages as $modelName => $usages) {
-                $editCell .= "<div class='ptl-edit-link'>"
-                    . "<span class='ptl-edit-model'>" . $this->esc($modelName) . "</span>"
-                    . $this->emailList($usages) . "</div>";
-            }
-
-            if ($editCell === '') {
-                $editCell = "<span class='ptl-url'>&mdash;</span>";
-            }
+            $editCell = $section->editLinks || $section->unlinkedEmailUsages
+                ? $this->adminEditLinks($section->editLinks, $section->unlinkedEmailUsages)
+                : "<span class='ptl-url'>&mdash;</span>";
 
             $html .= "<tr>"
                 . $this->testedCell('admin:' . Director::makeRelative($section->url), $section->name)
@@ -867,6 +852,80 @@ class HtmlReport
             . $this->testedTools('ptl-admin-sections', 'admin sections');
 
         return $this->tablePanel('ptl-admin-sections', 'Admin Sections', $tools, $html . "</tbody></table>");
+    }
+
+    /**
+     * One row per model: its example record's edit form, its add form, then where its
+     * code sends email, which is what saving one would test. The rows share a grid, so
+     * each kind of link lines up with the same kind in the other rows.
+     *
+     * @param AdminEditLink[] $links
+     * @param array<string, EmailUsage[]> $unlinkedEmailUsages Model name => usages, for
+     *                                                         models with neither form.
+     */
+    private function adminEditLinks(array $links, array $unlinkedEmailUsages): string
+    {
+        $rows = [];
+        foreach ($links as $link) {
+            // A model's add form follows its edit form, so they share a row.
+            $last = $rows ? array_key_last($rows) : null;
+            if ($link->isNew && $last !== null && $rows[$last]['model'] === $link->modelName && !$rows[$last]['new']) {
+                $rows[$last]['new'] = $link;
+                $rows[$last]['emails'] = $rows[$last]['emails'] ?: $link->emailUsages;
+                continue;
+            }
+
+            $rows[] = [
+                'model' => $link->modelName,
+                'edit' => $link->isNew ? null : $link,
+                'new' => $link->isNew ? $link : null,
+                'emails' => $link->emailUsages,
+            ];
+        }
+
+        foreach ($unlinkedEmailUsages as $modelName => $usages) {
+            $rows[] = ['model' => $modelName, 'edit' => null, 'new' => null, 'emails' => $usages];
+        }
+
+        // Columns nothing in the section uses are left out, rather than leaving gaps.
+        $hasAddForms = (bool) array_filter(array_column($rows, 'new'));
+        $hasEmails = (bool) array_filter(array_column($rows, 'emails'));
+        $columns = 2 + (int) $hasAddForms + (int) $hasEmails;
+
+        $html = '';
+        foreach ($rows as $row) {
+            $edit = '<span></span>';
+            if ($row['edit']) {
+                $edit = $this->adminEditItem($row['edit'], "class='ptl-cms'", $this->esc($row['edit']->recordTitle));
+            } elseif ($row['new']) {
+                $edit = "<span class='ptl-edit-none'>No records</span>";
+            }
+
+            // Styled as a form rather than a record, and named for what it opens.
+            $new = $row['new']
+                ? $this->adminEditItem(
+                    $row['new'],
+                    "class='ptl-add-form'",
+                    $this->icon('document') . ' Add form'
+                        . "<span class='ptl-sr-only'> for a new " . $this->esc($row['model']) . "</span>"
+                )
+                : '<span></span>';
+
+            $emails = $row['emails'] ? $this->emailList($row['emails']) : '<span></span>';
+
+            $html .= "<div class='ptl-edit-link'>"
+                . "<span class='ptl-edit-model'>" . $this->esc($row['model']) . "</span>{$edit}"
+                . ($hasAddForms ? $new : '') . ($hasEmails ? $emails : '') . "</div>";
+        }
+
+        return "<div class='ptl-edit-grid' style='--ptl-edit-columns: {$columns}'>{$html}</div>";
+    }
+
+    private function adminEditItem(AdminEditLink $link, string $class, string $label): string
+    {
+        return "<span class='ptl-edit-item'>"
+            . $this->statusPlaceholder("admin-edit-status-{$link->index}")
+            . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' {$class}>{$label}</a></span>";
     }
 
     private function liveDomainSection(): string
@@ -898,9 +957,12 @@ class HtmlReport
             . "<h3>What it checks</h3>"
             . "<ul>"
             . "<li><strong>CMS edit form</strong> &ndash; the page's CMS edit URL returns HTTP 200. On pages with "
-            . "Elemental blocks, the block list the blocks editor loads afterwards must return 200 as well</li>"
+            . "Elemental blocks, the block list the blocks editor loads afterwards must return 200 as well. The "
+            . "page's Settings and History screens are checked too, and only shown when they fail</li>"
             . "<li><strong>Frontend</strong> &ndash; the page URL returns its expected status (200, or 404/500 "
-            . "for ErrorPage, or a redirect for RedirectorPage)</li>"
+            . "for ErrorPage, or a redirect for RedirectorPage). A 200 still fails if the page shows PHP error "
+            . "or debug output, unrendered template code or shortcodes, has no title, or stops before "
+            . "<code>&lt;/html&gt;</code>. Actions and blocks are searched for the same error output and code</li>"
             . "<li><strong>Actions</strong> &ndash; where a controller declares <code>\$allowed_actions</code>, "
             . "links beneath the page's own URL are found and checked</li>"
             . "<li><strong>Forms</strong> &ndash; <code>&lt;form&gt;</code> tags in the main content are flagged "
@@ -908,6 +970,8 @@ class HtmlReport
             . "<li><strong>Blocks</strong> &ndash; where Elemental is installed, one block of each type can be "
             . "summarised in its page's block list in the CMS, its CMS edit form returns 200, and it renders on its own "
             . "with a 200</li>"
+            . "<li><strong>Admin sections</strong> &ndash; each section returns 200, as does the edit form for "
+            . "one record of each model and, where the section has an Add button, the form for a new one</li>"
             . "<li><strong>Sends email</strong> &ndash; page types, block types and admin sections whose code "
             . "sends email are flagged, with where it happens, so you know which forms to submit and which inboxes "
             . "to check. This reads the code rather than running it, so nothing is sent</li>"
@@ -947,6 +1011,7 @@ class HtmlReport
                 'expected' => $row->expectedStatus,
                 'actions' => array_values($row->allowedActions),
                 'blockListUrls' => array_values($row->blockListUrls),
+                'cmsScreenChecks' => $row->cmsScreenChecks,
             ];
         }
 
@@ -974,7 +1039,7 @@ class HtmlReport
         foreach ($sections as $section) {
             $sectionData[] = ['index' => $section->index, 'url' => $section->url];
             foreach ($section->editLinks as $link) {
-                $editData[] = ['index' => $link->index, 'url' => $link->url];
+                $editData[] = ['index' => $link->index, 'url' => $link->url, 'isNew' => $link->isNew];
             }
         }
 

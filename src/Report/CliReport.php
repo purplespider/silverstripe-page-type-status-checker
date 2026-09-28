@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
+use PurpleSpider\PageTypeTester\ContentProblemFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\CheckResult;
@@ -27,14 +28,15 @@ class CliReport
     private int $loginRequired = 0;
 
     /**
-     * @var array<int, array{type: string, subject: string, url: string, status: string}>
+     * @var array<int, array{type: string, subject: string, url: string, status: string, problem: string}>
      */
     private array $failures = [];
 
     public function __construct(
         private readonly UrlChecker $checker,
         private readonly ActionLinkFinder $actionFinder,
-        private readonly bool $skipActions = false
+        private readonly bool $skipActions = false,
+        private readonly ContentProblemFinder $problemFinder = new ContentProblemFinder()
     ) {
     }
 
@@ -94,7 +96,16 @@ class CliReport
         $this->renderEmailUsages($output, $row->emailUsages);
 
         $frontendResult = $this->checker->check($row->frontendLink);
-        $this->report($output, 'Frontend', $row->shortClass, $row->frontendLink, $frontendResult, $row->expectedStatus);
+        $this->report(
+            $output,
+            'Frontend',
+            $row->shortClass,
+            $row->frontendLink,
+            $frontendResult,
+            $row->expectedStatus,
+            null,
+            $this->problemFinder->find($frontendResult, true)
+        );
 
         $cmsResult = $this->checker->check($row->cmsLink);
         $this->report($output, 'CMS', $row->shortClass, $row->cmsLink, $cmsResult, [200]);
@@ -107,9 +118,37 @@ class CliReport
             $this->reportJsonError($output, $result);
         }
 
+        if ($cmsResult->status === 200) {
+            $this->renderCmsScreens($output, $row);
+        }
+
         $this->renderActions($output, $row, $frontendResult);
 
         $output->writeForAnsi("\n");
+    }
+
+    /**
+     * The page's other CMS screens are only listed when they fail, as the browser
+     * report does, so they add nothing to a page type that works.
+     */
+    private function renderCmsScreens(PolyOutput $output, PageTypeRow $row): void
+    {
+        $failed = [];
+        foreach ($row->cmsScreenChecks as $check) {
+            // History is two requests under one label, and one failure says enough.
+            if (isset($failed[$check['label']])) {
+                continue;
+            }
+
+            $result = $this->checker->check($check['url']);
+            if ($result->loginRequired || $result->matches([200])) {
+                continue;
+            }
+
+            $failed[$check['label']] = true;
+            $this->report($output, "CMS {$check['label']}", $row->shortClass, $check['url'], $result, [200]);
+            $this->reportJsonError($output, $result);
+        }
     }
 
     private function renderBlockType(PolyOutput $output, BlockTypeRow $row): void
@@ -137,7 +176,8 @@ class CliReport
             }
 
             $result = $this->checker->check($url);
-            $this->report($output, $label, $row->shortClass, $url, $result, [200], "Block {$label}");
+            $problem = $label === 'Frontend' ? $this->problemFinder->find($result, false) : '';
+            $this->report($output, $label, $row->shortClass, $url, $result, [200], "Block {$label}", $problem);
             $this->reportJsonError($output, $result);
         }
 
@@ -208,7 +248,16 @@ class CliReport
             }
 
             $result = $this->checker->check($actionLinks[$action]);
-            $this->report($output, "Action /{$action}", $row->shortClass, $actionLinks[$action], $result, [200]);
+            $this->report(
+                $output,
+                "Action /{$action}",
+                $row->shortClass,
+                $actionLinks[$action],
+                $result,
+                [200],
+                null,
+                $this->problemFinder->find($result, false)
+            );
         }
     }
 
@@ -229,12 +278,12 @@ class CliReport
             $editResult = $this->checker->check($editLink->url);
             $this->report(
                 $output,
-                "Edit {$editLink->modelName}",
+                ($editLink->isNew ? 'Add ' : 'Edit ') . $editLink->modelName,
                 $section->name . ' / ' . $editLink->modelName,
                 $editLink->url,
                 $editResult,
                 [200],
-                'Edit Form'
+                $editLink->isNew ? 'Add Form' : 'Edit Form'
             );
             $this->renderEmailUsages($output, $editLink->emailUsages, '    ');
         }
@@ -244,6 +293,8 @@ class CliReport
 
     /**
      * @param int[] $expected
+     * @param string $problem What is wrong with a response that has the expected status,
+     *                        from ContentProblemFinder. Makes the check fail.
      */
     private function report(
         PolyOutput $output,
@@ -252,7 +303,8 @@ class CliReport
         string $url,
         CheckResult $result,
         array $expected,
-        ?string $failureType = null
+        ?string $failureType = null,
+        string $problem = ''
     ): void {
         $this->checked++;
 
@@ -262,7 +314,7 @@ class CliReport
             return;
         }
 
-        if ($result->matches($expected)) {
+        if ($result->matches($expected) && $problem === '') {
             $this->passed++;
             $output->writeForAnsi("\n  <fg=green>✓</> {$label}: {$url} [{$result->getLabel()}]");
             return;
@@ -272,6 +324,9 @@ class CliReport
         $note = $result->isRedirect() && $result->redirectUrl
             ? ' <comment>-> ' . $result->redirectUrl . '</comment>'
             : '';
+        if ($problem !== '') {
+            $note = ' <comment>' . OutputFormatter::escape($problem) . '</comment>';
+        }
         $output->writeForAnsi("\n  <fg=red>✗</> {$label}: {$url} <fg=red>[{$result->getLabel()}]</>{$note}");
 
         $this->failures[] = [
@@ -279,6 +334,7 @@ class CliReport
             'subject' => $subject,
             'url' => $url,
             'status' => $result->getLabel(),
+            'problem' => $problem,
         ];
     }
 
@@ -289,7 +345,9 @@ class CliReport
             foreach ($this->failures as $failure) {
                 $output->writeForAnsi(
                     "  <fg=red>✗</> <options=bold>{$failure['subject']}</> {$failure['type']}: "
-                    . "{$failure['url']} <fg=red>[{$failure['status']}]</>\n"
+                    . "{$failure['url']} <fg=red>[{$failure['status']}]</>"
+                    . ($failure['problem'] === '' ? '' : ' <comment>' . OutputFormatter::escape($failure['problem']) . '</comment>')
+                    . "\n"
                 );
             }
         }

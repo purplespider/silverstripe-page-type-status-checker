@@ -15,6 +15,7 @@ use SilverStripe\Core\ClassInfo;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldAddNewButton;
 use SilverStripe\Forms\GridField\GridFieldDetailForm;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\Security\Security;
@@ -28,6 +29,11 @@ use Throwable;
  */
 class AdminSectionCollector
 {
+    /**
+     * Prefixes an add form's key in the edit links, beside the model's own edit form.
+     */
+    private const ADD_FORM_KEY = 'new:';
+
     private readonly EmailUsageFinder $emailFinder;
 
     public function __construct(?EmailUsageFinder $emailFinder = null)
@@ -69,12 +75,12 @@ class AdminSectionCollector
             $managedModels = $this->managedModels($adminClass);
             $editLinks = $this->editLinksFor($adminClass, $managedModels, $editIndex);
 
-            // A record's email usages go with its edit link. Those with no link, such as
-            // a model with no records yet, are listed by model name instead.
+            // A record's email usages go with its edit link, or its add form when there
+            // are no records yet. Those with neither are listed by model name instead.
             $modelClasses = $this->modelClasses($managedModels);
             $unlinked = [];
             foreach ($modelClasses as $modelClass) {
-                if (isset($editLinks[$modelClass])) {
+                if (isset($editLinks[$modelClass]) || isset($editLinks[self::ADD_FORM_KEY . $modelClass])) {
                     continue;
                 }
                 $usages = $this->emailFinder->forModel($modelClass);
@@ -141,7 +147,8 @@ class AdminSectionCollector
     }
 
     /**
-     * @return array<string, AdminEditLink> Keyed by model class.
+     * @return array<string, AdminEditLink> Keyed by model class, and add forms by
+     *         ADD_FORM_KEY followed by the model class.
      */
     private function editLinksFor(string $adminClass, array $managedModels, int &$editIndex): array
     {
@@ -162,20 +169,56 @@ class AdminSectionCollector
             // Taken from the grid's own list rather than the model's table, as the grid
             // 404s any record it does not list itself (e.g. a filtered getList()).
             $record = $grid->getList()->first();
-            if (!$record instanceof DataObject) {
-                continue;
+            $emailUsages = $this->emailFinder->forModel($dataClass);
+            if ($record instanceof DataObject) {
+                $links[$dataClass] = new AdminEditLink(
+                    ClassInfo::shortName($dataClass),
+                    Director::absoluteURL($grid->Link('item/' . $record->ID)),
+                    (string) ($record->getTitle() ?: '(untitled)'),
+                    $editIndex++,
+                    $emailUsages
+                );
             }
 
-            $links[$dataClass] = new AdminEditLink(
-                ClassInfo::shortName($dataClass),
-                Director::absoluteURL($grid->Link('item/' . $record->ID)),
-                (string) ($record->getTitle() ?: '(untitled)'),
-                $editIndex++,
-                $this->emailFinder->forModel($dataClass)
-            );
+            // The add form builds its fields for an empty record, which is where
+            // getCMSFields() code that assumes a saved record falls over. With no
+            // record to edit, the model's email usages go with this form instead.
+            if ($this->canAddTo($grid)) {
+                $links[self::ADD_FORM_KEY . $dataClass] = new AdminEditLink(
+                    ClassInfo::shortName($dataClass),
+                    Director::absoluteURL($grid->Link('item/new')),
+                    'Add new',
+                    $editIndex++,
+                    isset($links[$dataClass]) ? [] : $emailUsages,
+                    true
+                );
+            }
         }
 
         return $links;
+    }
+
+    /**
+     * Only grids that offer an Add button, as the add form refuses anybody the button
+     * would be hidden from.
+     */
+    private function canAddTo(GridField $grid): bool
+    {
+        if (!$grid->getConfig()->getComponentByType(GridFieldAddNewButton::class)) {
+            return false;
+        }
+
+        // As with canView() on the sections, only filter by permission when somebody is
+        // logged in, or the CLI report would never list an add form.
+        if (!Security::getCurrentUser()) {
+            return true;
+        }
+
+        try {
+            return (bool) singleton($grid->getModelClass())->canCreate();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

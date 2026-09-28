@@ -17,6 +17,8 @@ class PageTypeRow
      * @param int[] $expectedStatus
      * @param string[] $blockListUrls The page's Elemental block lists, checked with its CMS URL.
      * @param EmailUsage[] $emailUsages Where the type's code sends email.
+     * @param array<int, array{label: string, url: string, link: string}> $cmsScreenChecks The page's other
+     *        CMS screens, such as Settings, only reported when they fail.
      */
     public function __construct(
         public readonly string $class,
@@ -32,7 +34,8 @@ class PageTypeRow
         public readonly string $frontendLink = '',
         public readonly string $pageUrl = '',
         public readonly array $blockListUrls = [],
-        public readonly array $emailUsages = []
+        public readonly array $emailUsages = [],
+        public readonly array $cmsScreenChecks = []
     ) {
     }
 

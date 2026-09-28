@@ -63,13 +63,15 @@ class UrlChecker
         $body = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $redirectUrl = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         curl_close($ch);
 
         return new CheckResult(
             $status,
             is_string($body) ? $body : '',
             $this->isLoginRedirect($status, $redirectUrl),
-            $redirectUrl
+            $redirectUrl,
+            $contentType
         );
     }
 
