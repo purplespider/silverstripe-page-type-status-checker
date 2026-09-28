@@ -168,6 +168,11 @@
             label = String(result.status);
             className = 'ptl-status-fail';
             glyph = icon('warning');
+        } else if (result.warning && expected.indexOf(result.status) !== -1) {
+            // It works, but a link on it does not.
+            label = String(result.status);
+            className = 'ptl-status-warning';
+            glyph = icon('warning');
         } else if (expected.indexOf(result.status) !== -1) {
             label = String(result.status);
             className = 'ptl-status-pass';
@@ -207,12 +212,13 @@
     }
 
     function problemNote(result) {
-        if (!result.problem) {
+        var problem = result.problem || result.warning;
+        if (!problem) {
             return '';
         }
 
         return 'Responded with ' + statusLabel(result.status) + ', but '
-            + result.problem.charAt(0).toLowerCase() + result.problem.slice(1) + '.';
+            + problem.charAt(0).toLowerCase() + problem.slice(1) + '.';
     }
 
     function statusLabel(status) {
@@ -237,6 +243,7 @@
         return {
             passed: count('.ptl-status-badge.ptl-status-pass'),
             failed: count('.ptl-status-badge.ptl-status-fail, .ptl-status-badge.ptl-status-redirect'),
+            warnings: count('.ptl-status-badge.ptl-status-warning'),
             login: count('.ptl-status-badge.ptl-status-login'),
             manual: count('[data-ptl-manual]')
         };
@@ -262,6 +269,10 @@
             lead = icon('lock') + ' ' + t.login + ' need login, ' + t.passed + ' passed';
             background = '#fff3cd';
             colour = '#6b5203';
+        } else if (t.failed === 0 && t.warnings > 0) {
+            lead = icon('warning') + ' ' + t.warnings + ' with warnings, ' + t.passed + ' passed';
+            background = '#ffe5d0';
+            colour = '#6a2c00';
         } else if (t.failed === 0) {
             lead = icon('check') + ' ' + t.passed + ' passed';
             background = '#d1e7dd';
@@ -272,6 +283,9 @@
             colour = '#6a1a21';
         }
 
+        if (t.warnings > 0 && (t.failed > 0 || t.login > 0 || stopped)) {
+            parts.push(t.warnings + ' with warnings');
+        }
         if (t.manual > 0) {
             parts.push(t.manual + ' manual');
         }
@@ -329,8 +343,19 @@
 
         return errorOutput(result.html)
             || unrenderedCode(result.html)
-            || brokenLink(result.html)
             || (isDocument ? documentProblem(result.html) : '');
+    }
+
+    /**
+     * The first broken link in a 200 response, or ''. A warning rather than a failure,
+     * as the page itself works. Mirrors ContentProblemFinder::findWarning in PHP.
+     */
+    function findLinkWarning(result) {
+        if (result.status !== 200 || !result.html || result.contentType.indexOf('html') === -1) {
+            return '';
+        }
+
+        return brokenLink(result.html);
     }
 
     function errorOutput(html) {
@@ -662,6 +687,7 @@
 
         var result = await checkFrontendLink(row, url);
         result.problem = findContentProblem(result, false);
+        result.warning = findLinkWarning(result);
         span.innerHTML = statusBadge(result, [200], 'action:' + row.index + ':' + action);
     }
 
@@ -880,6 +906,7 @@
         span.innerHTML = placeholder('...');
         var result = await checkFrontendLink(row, row.frontendLink);
         result.problem = findContentProblem(result, true);
+        result.warning = findLinkWarning(result);
 
         if (state.stopRequested) {
             span.innerHTML = '';
@@ -974,6 +1001,7 @@
                 ? await checkCmsLink(block.frontendUrl, false, true)
                 : await checkLink(block.frontendUrl, true);
             result.problem = findContentProblem(result, false);
+            result.warning = findLinkWarning(result);
         }
 
         if (state.stopRequested) {

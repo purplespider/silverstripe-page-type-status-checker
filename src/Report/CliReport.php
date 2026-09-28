@@ -32,6 +32,13 @@ class CliReport
      */
     private array $failures = [];
 
+    /**
+     * Pages that work, but have a broken link on them.
+     *
+     * @var array<int, array{type: string, subject: string, url: string, problem: string}>
+     */
+    private array $warnings = [];
+
     public function __construct(
         private readonly UrlChecker $checker,
         private readonly ActionLinkFinder $actionFinder,
@@ -104,7 +111,8 @@ class CliReport
             $frontendResult,
             $row->expectedStatus,
             null,
-            $this->problemFinder->find($frontendResult, true)
+            $this->problemFinder->find($frontendResult, true),
+            $this->problemFinder->findWarning($frontendResult)
         );
 
         $cmsResult = $this->checker->check($row->cmsLink);
@@ -192,7 +200,18 @@ class CliReport
 
             $result = $this->checker->check($url);
             $problem = $label === 'Frontend' ? $this->problemFinder->find($result, false) : '';
-            $this->report($output, $label, $row->shortClass, $url, $result, [200], "Block {$label}", $problem);
+            $warning = $label === 'Frontend' ? $this->problemFinder->findWarning($result) : '';
+            $this->report(
+                $output,
+                $label,
+                $row->shortClass,
+                $url,
+                $result,
+                [200],
+                "Block {$label}",
+                $problem,
+                $warning
+            );
             $this->reportJsonError($output, $result);
         }
 
@@ -271,7 +290,8 @@ class CliReport
                 $result,
                 [200],
                 null,
-                $this->problemFinder->find($result, false)
+                $this->problemFinder->find($result, false),
+                $this->problemFinder->findWarning($result)
             );
         }
     }
@@ -319,13 +339,28 @@ class CliReport
         CheckResult $result,
         array $expected,
         ?string $failureType = null,
-        string $problem = ''
+        string $problem = '',
+        string $warning = ''
     ): void {
         $this->checked++;
 
         if ($result->loginRequired) {
             $this->loginRequired++;
             $output->writeForAnsi("\n  <fg=yellow>⚠</> {$label}: {$url} <comment>[login required]</comment>");
+            return;
+        }
+
+        if ($result->matches($expected) && $problem === '' && $warning !== '') {
+            $this->warnings[] = [
+                'type' => $failureType ?? $label,
+                'subject' => $subject,
+                'url' => $url,
+                'problem' => $warning,
+            ];
+            $output->writeForAnsi(
+                "\n  <fg=yellow>⚠</> {$label}: {$url} [{$result->getLabel()}] <comment>"
+                . OutputFormatter::escape($warning) . '</comment>'
+            );
             return;
         }
 
@@ -367,6 +402,16 @@ class CliReport
             }
         }
 
+        if ($this->warnings) {
+            $output->writeForAnsi("\n<fg=yellow;options=bold>WARNINGS (" . count($this->warnings) . "):</>\n");
+            foreach ($this->warnings as $warning) {
+                $output->writeForAnsi(
+                    "  <fg=yellow>⚠</> <options=bold>{$warning['subject']}</> {$warning['type']}: {$warning['url']}"
+                    . ' <comment>' . OutputFormatter::escape($warning['problem']) . "</comment>\n"
+                );
+            }
+        }
+
         if ($this->loginRequired > 0) {
             $loginUrl = $this->checker->getLoginUrl();
             $output->writeForAnsi(
@@ -378,6 +423,7 @@ class CliReport
 
         $output->writeForAnsi(
             "\n<options=bold>Results:</> <fg=green>{$this->passed} passed</>, <fg=red>{$this->failed} failed</>"
+            . ($this->warnings ? ', <fg=yellow>' . count($this->warnings) . ' with warnings</>' : '')
             . ($this->loginRequired > 0 ? ", <fg=yellow>{$this->loginRequired} need login</>" : '')
             . " ({$this->checked} checked)\n"
         );

@@ -17,6 +17,7 @@
     --ptl-fail: #b02a37;
     --ptl-warn: #ffc107;
     --ptl-warn-strong: #f0ad4e;
+    --ptl-warn-orange: #fd7e14;
     --ptl-primary: #0071bc;
     --ptl-primary-dark: #005a96;
     --ptl-secondary: #36699e;
@@ -718,6 +719,12 @@ button.ptl-status-fail {
 
 button.ptl-status-redirect {
     background: var(--ptl-warn);
+    color: var(--ptl-text);
+}
+
+/* Works, but a link on it does not. Orange, so it reads apart from a redirect's amber. */
+button.ptl-status-warning {
+    background: var(--ptl-warn-orange);
     color: var(--ptl-text);
 }
 

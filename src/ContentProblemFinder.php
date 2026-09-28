@@ -7,8 +7,9 @@ use SilverStripe\Control\Director;
 
 /**
  * Looks inside a 200 response for signs that it did not really work: error output,
- * template code or shortcodes that were never rendered, broken links to the site
- * itself, and a page that is cut off or has no title.
+ * template code or shortcodes that were never rendered, and a page that is cut off or
+ * has no title. Broken links are warnings rather than failures, as the page itself
+ * works.
  *
  * Shared by the CLI report and (via the same rules reimplemented in JavaScript as
  * findContentProblem) the browser report, so that both agree on what fails.
@@ -28,19 +29,27 @@ class ContentProblemFinder
      */
     public function find(CheckResult $result, bool $isDocument): string
     {
-        if ($result->status !== 200 || $result->body === '' || !$result->isHtml()) {
-            return '';
-        }
-
-        return $this->findInHtml($result->body, $isDocument);
+        return $this->isSearchable($result) ? $this->findInHtml($result->body, $isDocument) : '';
     }
 
     public function findInHtml(string $html, bool $isDocument): string
     {
         return $this->errorOutput($html)
             ?: $this->unrenderedCode($html)
-            ?: $this->brokenLink($html)
             ?: ($isDocument ? $this->documentProblem($html) : '');
+    }
+
+    /**
+     * Returns a description of the first broken link found, or '' for none.
+     */
+    public function findWarning(CheckResult $result): string
+    {
+        return $this->isSearchable($result) ? $this->brokenLink($result->body) : '';
+    }
+
+    private function isSearchable(CheckResult $result): bool
+    {
+        return $result->status === 200 && $result->body !== '' && $result->isHtml();
     }
 
     private function errorOutput(string $html): string
