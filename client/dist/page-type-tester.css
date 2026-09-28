@@ -262,6 +262,40 @@ p.ptl-desc {
     border-color: var(--ptl-fail);
 }
 
+/* Pushed to the far end, away from the buttons that are safe to click freely. */
+.ptl-toolbar-end {
+    margin-left: auto;
+}
+
+/* Table heading with its view controls, matching the Admin Sections caption. */
+.ptl-table-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin-bottom: 16px;
+}
+
+/* A second table, set apart from the one above. */
+.ptl-table-bar-spaced {
+    margin-top: 30px;
+}
+
+.ptl-table-bar h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ptl-text);
+}
+
+.ptl-table-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
 .ptl-divider {
     width: 1px;
     height: 24px;
@@ -303,6 +337,19 @@ p.ptl-desc {
     transform: translateX(-50%);
     border: 6px solid transparent;
     border-bottom-color: #343a40;
+}
+
+/* For a tip at the right-hand edge, where a centred one would run off the page. */
+.ptl-tip-end {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+.ptl-tip-end::after {
+    left: auto;
+    right: 20px;
+    transform: none;
 }
 
 .ptl-tip-above {
@@ -808,6 +855,86 @@ button.ptl-status-login {
 
 /* .ptl-btn-wrap sets display, which would otherwise win over the hidden attribute. */
 .ptl-btn-wrap[hidden] {
+    display: none;
+}
+
+/* Tested */
+
+/* The ticks are stored by the script, so without it they would do nothing. */
+.ptl-wrap:not(.ptl-js) .ptl-tested-ui {
+    display: none;
+}
+
+.ptl-tested-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ptl-tested-progress {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ptl-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* #146c2e on the page background is 6.2:1. */
+.ptl-tested-progress.ptl-tested-complete {
+    color: #146c2e;
+}
+
+.ptl-table .ptl-tested-col {
+    width: 1%;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* The whole cell toggles the tick, not just the box. */
+.ptl-table td.ptl-tested-col {
+    cursor: pointer;
+    user-select: none;
+}
+
+.ptl-tested {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+/* #146c2e against white is 6.9:1, well clear of 3:1 for a control. */
+.ptl-tested input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: #146c2e;
+    cursor: pointer;
+}
+
+.ptl-tested-date {
+    color: var(--ptl-muted);
+    font-size: 11px;
+}
+
+.ptl-tested-date:empty {
+    display: none;
+}
+
+/*
+ * The tick and date are the non-colour cue; the tint is for scanning a long list.
+ * Every text colour used in the rows still clears 4.5:1 on it.
+ */
+.ptl-table tbody tr.ptl-is-tested td {
+    background: #e7f3ea;
+}
+
+.ptl-table tbody tr.ptl-is-tested:hover td {
+    background: #dcede0;
+}
+
+.ptl-table.ptl-hide-tested tr.ptl-is-tested {
     display: none;
 }
 

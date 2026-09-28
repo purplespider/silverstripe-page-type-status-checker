@@ -11,6 +11,7 @@ A Silverstripe BuildTask that provides a visual interface for testing all page t
 - Detects and tests controller `$allowed_actions`
 - Detects forms on pages (flags for manual testing)
 - "Create" buttons to add a test page for any page type that has none, and delete them again afterwards
+- Tick off each page type and admin section as you test it by hand, with a progress count and a filter to hide the ones already done
 - "Open All" buttons to open CMS or frontend links in new tabs
 - Optional page preview thumbnails
 - Randomise selected pages for broader testing
@@ -95,6 +96,18 @@ SilverStripe\Control\Session:
 Lax still sends the session cookie on top-level cross-site GET navigations, which is the link-click case, while withholding it on cross-site POSTs and subresource loads. It was Silverstripe's own default until 6.0, and state-changing requests are protected by `SecurityToken` regardless. There is no middle setting: SameSite has no per-origin allowlist, and `None` is weaker still.
 
 Otherwise, just log in when you land there - the redirect carries a `BackURL`, so you end up on the page you clicked for. Live frontend links are unaffected.
+
+## Tracking what you have tested
+
+The status checks only prove a page responds. Each page type and admin section also has a **Tested** checkbox for marking it once you have been through it by hand. Each table shows how many are done and has its own **Hide Tested** button, which leaves only the ones still to do. Hovering the date under a tick shows exactly when it was ticked.
+
+Ticks are per page type rather than per page, so they survive Randomise picking a different example. Types with no pages can be ticked too, for example once you have created one and checked it, or decided the type is unused. They are stored in your browser's local storage, which means:
+
+- nothing to install and no database table
+- they survive logging out, and pulling a fresh copy of the live database midway through testing
+- they belong to that browser only, so they are not shared with colleagues or between browsers
+
+Use a table's **Clear** button to start that table again, for example before the next upgrade.
 
 ## Creating and deleting pages
 

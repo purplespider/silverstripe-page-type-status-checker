@@ -199,15 +199,6 @@ class HtmlReport
 
         $html .= "<div class='ptl-divider'></div>";
 
-        $html .= "<button type='button' data-ptl-action='toggle-previews' aria-pressed='false' class='ptl-btn'>"
-            . $this->icon('eye') . " Show Previews</button>";
-
-        $html .= "<div class='ptl-divider'></div>";
-
-        $html .= $this->deleteCreatedButton();
-
-        $html .= "<div class='ptl-divider'></div>";
-
         $html .= "<div class='ptl-btn-group'>"
             . "<button type='button' data-ptl-action='randomise' class='ptl-btn'>"
             . $this->icon('shuffle') . " Randomise</button>";
@@ -217,9 +208,28 @@ class HtmlReport
                 . $this->icon('reset') . " Reset</button>";
         }
 
-        $html .= "</div></div>";
+        $html .= "</div>";
 
-        return $html;
+        $html .= $this->deleteCreatedButton();
+
+        return $html . "</div>";
+    }
+
+    /**
+     * The table's heading, with the controls that change how the table is shown.
+     *
+     * These sit with the table rather than in the toolbar, which keeps the toolbar to
+     * things that act (check, open, pick, delete) and short enough for one line.
+     */
+    private function pageTypeBar(): string
+    {
+        return "<div class='ptl-table-bar'>"
+            . "<h2>Page Types</h2>"
+            . "<div class='ptl-table-tools'>"
+            . "<button type='button' data-ptl-action='toggle-previews' aria-pressed='false' class='ptl-btn'>"
+            . $this->icon('eye') . " Show Previews</button>"
+            . $this->testedTools('ptl-page-types', 'page types')
+            . "</div></div>";
     }
 
     /**
@@ -227,9 +237,11 @@ class HtmlReport
      */
     private function pageTypeTable(array $rows): string
     {
-        $html = "<table class='ptl-table'>"
+        $html = $this->pageTypeBar()
+            . "<table class='ptl-table' id='ptl-page-types'>"
             . "<caption class='ptl-sr-only'>Page types with their CMS and frontend status</caption>"
             . "<thead><tr>"
+            . "<th scope='col' class='ptl-tested-col ptl-tested-ui'>Tested</th>"
             . "<th scope='col' class='ptl-preview-col'>Preview</th>"
             . "<th scope='col'>Page Type</th>"
             . "<th scope='col'>Count</th>"
@@ -326,6 +338,7 @@ class HtmlReport
         );
 
         return "<tr>"
+            . $this->testedCell($row->class, $row->shortClass)
             . "<td class='ptl-preview-col'><div class='ptl-preview'>"
             . "<iframe title='Preview of " . $this->esc($row->title) . "' data-src='"
             . $this->esc($row->frontendLink) . "'></iframe></div></td>"
@@ -348,6 +361,7 @@ class HtmlReport
             : '';
 
         return "<tr>"
+            . $this->testedCell($row->class, $row->shortClass)
             . "<td class='ptl-preview-col'><div class='ptl-preview-empty'>No preview</div></td>"
             . "<td><span class='ptl-type'>{$shortClass}</span></td>"
             . "<td><span class='ptl-count'>0</span></td>"
@@ -356,6 +370,48 @@ class HtmlReport
             . "data-ptl-class='" . $this->esc($row->class) . "' data-ptl-short='{$shortClass}'>"
             . $this->icon('plus') . " Create {$shortClass}</button>{$note}</td>"
             . "</tr>";
+    }
+
+    /**
+     * The "I have tested this by hand" tick.
+     *
+     * Page types are keyed by class rather than page ID, because what gets tested is
+     * the type: Randomise swaps the example page, and the tick should survive that.
+     * Types with no pages get one too, so every type can be signed off, including one
+     * that has been checked and found unused. Admin sections are keyed by URL.
+     *
+     * The ticks themselves live in the browser, so the checkbox is rendered unticked
+     * and the script fills it in, along with the date.
+     */
+    private function testedCell(string $key, string $label): string
+    {
+        return "<td class='ptl-tested-col ptl-tested-ui'><label class='ptl-tested'>"
+            . "<input type='checkbox' data-ptl-tested='" . $this->esc($key) . "'>"
+            . "<span class='ptl-sr-only'>" . $this->esc($label) . " tested</span>"
+            . "<span class='ptl-tested-date'></span></label></td>";
+    }
+
+    /**
+     * "3 of 12 tested", Hide Tested and Clear for one table. Each table has its own set,
+     * so the controls act on the table they sit above and nothing else. The count is
+     * filled in by the script.
+     *
+     * @param string $label What the table lists, for the hidden part of the button names.
+     */
+    private function testedTools(string $tableId, string $label): string
+    {
+        $table = " data-ptl-table='{$tableId}' data-ptl-label='" . $this->esc($label) . "'";
+
+        return "<div class='ptl-tested-tools ptl-tested-ui'>"
+            . "<span class='ptl-tested-progress' data-ptl-progress-for='{$tableId}'></span>"
+            . "<div class='ptl-btn-group'>"
+            . "<button type='button' data-ptl-action='toggle-hide-tested'{$table} aria-pressed='false' class='ptl-btn'>"
+            . $this->icon('eye-slash') . " Hide Tested<span class='ptl-sr-only'> " . $this->esc($label)
+            . "</span></button>"
+            . "<button type='button' data-ptl-action='clear-tested'{$table} class='ptl-btn'>"
+            . $this->icon('reset') . " Clear<span class='ptl-sr-only'> tested marks from "
+            . $this->esc($label) . "</span></button>"
+            . "</div></div>";
     }
 
     /**
@@ -434,18 +490,20 @@ class HtmlReport
 
     /**
      * Hidden until something has been created, rather than sitting in the toolbar
-     * permanently reading zero.
+     * permanently reading zero. It sits apart at the far end, away from the buttons
+     * that are safe to click freely.
      */
     private function deleteCreatedButton(): string
     {
         $count = count($this->createdPageIds);
         $hidden = $count === 0 ? ' hidden' : '';
 
-        return "<span class='ptl-btn-wrap' id='ptl-delete-created-wrap'{$hidden}>"
+        return "<span class='ptl-btn-wrap ptl-toolbar-end' id='ptl-delete-created-wrap'{$hidden}>"
             . "<button type='button' id='ptl-delete-created-btn' data-ptl-action='delete-all-created'"
             . " class='ptl-btn ptl-btn-danger'>" . $this->icon('trash')
-            . " Delete Created Pages (<span id='ptl-delete-created-count'>{$count}</span>)</button>"
-            . "<span class='ptl-tip ptl-tip-below'>Deletes every page created here with a Create"
+            // One span for the label, or the flex gap also lands either side of the count.
+            . " <span>Delete Created Pages (<span id='ptl-delete-created-count'>{$count}</span>)</span></button>"
+            . "<span class='ptl-tip ptl-tip-below ptl-tip-end'>Deletes every page created here with a Create"
             . " button</span></span>";
     }
 
@@ -454,9 +512,14 @@ class HtmlReport
      */
     private function adminTable(array $sections): string
     {
-        $html = "<table class='ptl-table'>"
-            . "<caption>Admin Sections</caption>"
+        $html = "<div class='ptl-table-bar ptl-table-bar-spaced'>"
+            . "<h2>Admin Sections</h2>"
+            . "<div class='ptl-table-tools'>" . $this->testedTools('ptl-admin-sections', 'admin sections') . "</div>"
+            . "</div>"
+            . "<table class='ptl-table' id='ptl-admin-sections'>"
+            . "<caption class='ptl-sr-only'>Admin sections with their status</caption>"
             . "<thead><tr>"
+            . "<th scope='col' class='ptl-tested-col ptl-tested-ui'>Tested</th>"
             . "<th scope='col'>Name</th><th scope='col'>Type</th>"
             . "<th scope='col'>Admin Section</th><th scope='col'>Edit Form</th>"
             . "</tr></thead><tbody>";
@@ -478,6 +541,7 @@ class HtmlReport
             }
 
             $html .= "<tr>"
+                . $this->testedCell('admin:' . Director::makeRelative($section->url), $section->name)
                 . "<td><strong>{$name}</strong></td>"
                 . "<td><span class='ptl-type'>" . $this->esc($section->type) . "</span></td>"
                 . "<td><span id='admin-status-{$section->index}' class='ptl-status'>"

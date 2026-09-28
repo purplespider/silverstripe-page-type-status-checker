@@ -662,6 +662,7 @@
 
             row.removeAttribute('id');
             row.innerHTML = buildRowHtml(newRow, result);
+            renderTested();
 
             if (state.checksHaveRun) {
                 await checkFrontendCell(newRow, state.checksIncludedActions, null);
@@ -678,7 +679,8 @@
             ? '<span id="actions-container-' + newRow.index + '" class="ptl-actions-container"></span>'
             : '';
 
-        return '<td class="ptl-preview-col"><div class="ptl-preview">'
+        return testedCellHtml(newRow)
+            + '<td class="ptl-preview-col"><div class="ptl-preview">'
             + '<iframe title="Preview of ' + escapeHtml(result.title) + '" data-src="'
             + escapeHtml(result.frontendLink) + '"></iframe></div></td>'
             + '<td><span class="ptl-type">' + escapeHtml(newRow.shortClass) + '</span></td>'
@@ -774,6 +776,7 @@
                 rowEl.remove();
             }
 
+            renderTested();
             updateSummary(false);
         } catch (e) {
             showButtonError(button, original, e.message);
@@ -899,7 +902,8 @@
             ? '<div class="ptl-action-note">Has actions: ' + escapeHtml(row.actions.join(', ')) + '</div>'
             : '';
 
-        return '<td class="ptl-preview-col"><div class="ptl-preview-empty">No preview</div></td>'
+        return testedCellHtml(row)
+            + '<td class="ptl-preview-col"><div class="ptl-preview-empty">No preview</div></td>'
             + '<td><span class="ptl-type">' + escapeHtml(row.shortClass) + '</span></td>'
             + '<td><span class="ptl-count">0</span></td>'
             + '<td colspan="3" style="text-align:center;">'
@@ -964,6 +968,152 @@
     function windowFeatures(width, height, left, top) {
         return 'popup=yes,noopener=no,width=' + width + ',height=' + height
             + ',left=' + left + ',top=' + top;
+    }
+
+    /* tested */
+
+    /**
+     * Which page types have been tested by hand, keyed by class name.
+     *
+     * Kept in localStorage rather than the database or session: nothing to install,
+     * it survives logging out, and it survives pulling a fresh copy of the live
+     * database, which is common midway through testing an upgrade. The cost is that
+     * the ticks belong to this browser only.
+     */
+    var TESTED_KEY = 'ptl-tested:' + config.baseUrl;
+    var HIDE_TESTED_KEY = 'ptl-hide-tested:' + config.baseUrl;
+
+    function readStore(key, fallback) {
+        try {
+            var value = JSON.parse(window.localStorage.getItem(key));
+            return value == null ? fallback : value;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    // Storage can be unavailable or full. The ticks still work for this visit.
+    function writeStore(key, value) {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {
+            // Nothing useful to do.
+        }
+    }
+
+    var tested = readStore(TESTED_KEY, {});
+    var hideTested = readHideTested();
+
+    // Which tables are hiding their tested rows, keyed by table ID.
+    function readHideTested() {
+        var value = readStore(HIDE_TESTED_KEY, {});
+        return value && typeof value === 'object' ? value : {};
+    }
+
+    function setTested(className, isTested) {
+        if (isTested) {
+            tested[className] = Date.now();
+        } else {
+            delete tested[className];
+        }
+
+        writeStore(TESTED_KEY, tested);
+        renderTested();
+    }
+
+    function clearTested(button) {
+        var table = el(button.getAttribute('data-ptl-table'));
+        var boxes = table ? table.querySelectorAll('[data-ptl-tested]:checked') : [];
+        if (!boxes.length || !window.confirm('Clear the tested mark from ' + boxes.length + ' '
+            + button.getAttribute('data-ptl-label') + '?')) {
+            return;
+        }
+
+        boxes.forEach(function (box) {
+            delete tested[box.getAttribute('data-ptl-tested')];
+        });
+        writeStore(TESTED_KEY, tested);
+        renderTested();
+    }
+
+    // A short date to sit under the tick. The full date and time go in its title.
+    function shortTestedDate(timestamp) {
+        var date = new Date(timestamp);
+        var options = { day: 'numeric', month: 'short' };
+        if (date.getFullYear() !== new Date().getFullYear()) {
+            options.year = 'numeric';
+        }
+
+        return date.toLocaleDateString(undefined, options);
+    }
+
+    function fullTestedDate(timestamp) {
+        return new Date(timestamp).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' });
+    }
+
+    /**
+     * Brings every checkbox, the progress count and the filter in line with the stored
+     * ticks. Called after anything that changes either, including rows being created or
+     * deleted, so it reads the rows from the DOM rather than keeping its own list.
+     */
+    function renderTested() {
+        document.querySelectorAll('[data-ptl-tested]').forEach(function (box) {
+            var stamp = tested[box.getAttribute('data-ptl-tested')];
+            var date = box.parentNode.querySelector('.ptl-tested-date');
+
+            box.checked = !!stamp;
+            box.closest('tr').classList.toggle('ptl-is-tested', !!stamp);
+
+            if (date) {
+                date.textContent = stamp ? shortTestedDate(stamp) : '';
+                date.title = stamp ? 'Ticked ' + fullTestedDate(stamp) : '';
+            }
+        });
+
+        // Each table counts its own rows.
+        document.querySelectorAll('[data-ptl-progress-for]').forEach(function (progress) {
+            var table = el(progress.getAttribute('data-ptl-progress-for'));
+            if (!table) {
+                return;
+            }
+
+            var total = table.querySelectorAll('[data-ptl-tested]').length;
+            var done = table.querySelectorAll('[data-ptl-tested]:checked').length;
+
+            var complete = total > 0 && done === total;
+
+            progress.innerHTML = (complete ? icon('check') + ' ' : '') + done + ' of ' + total + ' tested';
+            progress.classList.toggle('ptl-tested-complete', complete);
+        });
+
+        document.querySelectorAll('[data-ptl-action="toggle-hide-tested"]').forEach(function (toggle) {
+            var tableId = toggle.getAttribute('data-ptl-table');
+            var hiding = hideTested[tableId] === true;
+            var table = el(tableId);
+
+            if (table) {
+                table.classList.toggle('ptl-hide-tested', hiding);
+            }
+
+            toggle.setAttribute('aria-pressed', hiding ? 'true' : 'false');
+            toggle.innerHTML = (hiding ? icon('eye') + ' Show Tested' : icon('eye-slash') + ' Hide Tested')
+                + '<span class="ptl-sr-only"> ' + escapeHtml(toggle.getAttribute('data-ptl-label')) + '</span>';
+        });
+    }
+
+    function toggleHideTested(button) {
+        var tableId = button.getAttribute('data-ptl-table');
+        hideTested[tableId] = hideTested[tableId] !== true;
+        writeStore(HIDE_TESTED_KEY, hideTested);
+        renderTested();
+    }
+
+    // Mirrors HtmlReport::testedCell.
+    function testedCellHtml(row) {
+        return '<td class="ptl-tested-col ptl-tested-ui"><label class="ptl-tested">'
+            + '<input type="checkbox" data-ptl-tested="' + escapeHtml(row.class) + '">'
+            + '<span class="ptl-sr-only">' + escapeHtml(row.shortClass) + ' tested</span>'
+            + '<span class="ptl-tested-date"></span></label></td>';
     }
 
     /* rechecks */
@@ -1079,6 +1229,12 @@
             case 'toggle-previews':
                 togglePreviews(trigger);
                 break;
+            case 'toggle-hide-tested':
+                toggleHideTested(trigger);
+                break;
+            case 'clear-tested':
+                clearTested(trigger);
+                break;
             case 'open-all':
                 openAll(trigger.getAttribute('data-ptl-links'));
                 break;
@@ -1100,6 +1256,36 @@
             case 'reload':
                 window.location.reload();
                 break;
+        }
+    });
+
+    document.addEventListener('change', function (event) {
+        var box = event.target.closest('[data-ptl-tested]');
+        if (box) {
+            setTested(box.getAttribute('data-ptl-tested'), box.checked);
+        }
+    });
+
+    // The whole cell is the target, not just the box. Clicks on the label already
+    // reach the checkbox, so only those outside it are passed on.
+    document.addEventListener('click', function (event) {
+        var cell = event.target.closest('td.ptl-tested-col');
+        if (!cell || event.target.closest('label')) {
+            return;
+        }
+
+        var box = cell.querySelector('[data-ptl-tested]');
+        if (box) {
+            box.click();
+        }
+    });
+
+    // Keeps a second report tab in step, so it cannot write back a stale set of ticks.
+    window.addEventListener('storage', function (event) {
+        if (event.key === TESTED_KEY || event.key === HIDE_TESTED_KEY) {
+            tested = readStore(TESTED_KEY, {});
+            hideTested = readHideTested();
+            renderTested();
         }
     });
 
@@ -1148,6 +1334,12 @@
 
         updateSummary(false);
     }
+
+    // The tested ticks only work with the script, so they stay hidden without it.
+    document.querySelectorAll('.ptl-wrap').forEach(function (wrap) {
+        wrap.classList.add('ptl-js');
+    });
+    renderTested();
 
     // Start the full check automatically, as the point of opening the page is to see
     // the results. The primary button doubles as a stop control while it runs.
