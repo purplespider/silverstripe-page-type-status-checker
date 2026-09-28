@@ -81,7 +81,7 @@ class PageCreator
         (new CreatedPageRegistry($request))->add((int) $page->ID);
 
         $baseUrl = Director::absoluteBaseURL();
-        $frontendLink = (string) $page->AbsoluteLink();
+        $frontendLink = PageTypeCollector::frontendLinkFor($page, $baseUrl);
 
         return [
             'success' => true,
@@ -90,7 +90,8 @@ class PageCreator
             'shortClass' => $shortName,
             'editLink' => Controller::join_links($baseUrl, 'admin/pages/edit/show', $page->ID),
             'frontendLink' => $frontendLink,
-            'pageUrl' => '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
+            'pageUrl' => PageTypeCollector::pageUrlFor($frontendLink, $baseUrl),
+            'frontendNeedsLogin' => !$page->isPublished(),
             'allowedActions' => PageTypeCollector::allowedActionsFor($className),
             'expectedStatus' => ExpectedStatus::forShortName($shortName),
             'blockListUrls' => ElementalSupport::blockListUrlsFor($page),

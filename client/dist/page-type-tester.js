@@ -127,6 +127,23 @@
         return result;
     }
 
+    /**
+     * A page only in draft is 404 on the live site, which would hide whatever its draft
+     * really does, so it and its actions are viewed on the draft stage. That needs a CMS
+     * login, so they are checked like CMS links, and show as needing login rather than
+     * failing without one.
+     */
+    function checkFrontendLink(row, url) {
+        if (!row.frontendNeedsLogin) {
+            return checkLink(url, true);
+        }
+
+        var draft = new URL(url, config.baseUrl);
+        draft.searchParams.set('stage', 'Stage');
+
+        return checkCmsLink(draft.href, false, true);
+    }
+
     function markNotLoggedIn() {
         state.notLoggedIn = true;
         var banner = el('ptl-login-banner');
@@ -312,6 +329,7 @@
 
         return errorOutput(result.html)
             || unrenderedCode(result.html)
+            || brokenLink(result.html)
             || (isDocument ? documentProblem(result.html) : '');
     }
 
@@ -337,12 +355,16 @@
         return '';
     }
 
-    function unrenderedCode(html) {
-        // Scripts, styles, comments and code samples are expected to hold template
-        // syntax, and would only be a false alarm.
-        var markup = html
+    // Scripts, styles, comments and code samples are expected to hold template syntax
+    // and example links, and would only be a false alarm.
+    function withoutCode(html) {
+        return html
             .replace(/<!--[\s\S]*?-->/g, '')
             .replace(/<(script|style|template|textarea|pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    }
+
+    function unrenderedCode(html) {
+        var markup = withoutCode(html);
 
         // Template control blocks, raw or escaped: <% if $Foo %>, &lt;% loop %&gt;.
         var match = markup.match(/(?:<|&lt;)%-?\s*(?:if|else_if|else|end_[a-z]+|loop|with|include|require|base_tag|cached|uncached|_t)\b[\s\S]*?%(?:>|&gt;)/);
@@ -360,6 +382,38 @@
         match = markup.match(/\[(?:sitetree_link|file_link|image|embed)[\s,]+\w+\s*=[^\]]*\]/i);
         if (match) {
             return 'Shows an unparsed shortcode: ' + excerpt(match[0]);
+        }
+
+        return '';
+    }
+
+    function brokenLink(html) {
+        var markup = withoutCode(html);
+
+        // The site's own address run straight into a path, as in
+        // https://example.comSecurity/logout. Silverstripe 6 dropped the trailing slash
+        // from $AbsoluteBaseURL, so templates that join it to a path break like this.
+        var site = stripTrailingSlash(config.baseUrl).replace(/^https?:\/\//i, '');
+        var pattern = new RegExp('\\b(?:href|src|action)\\s*=\\s*["\']\\s*((?:https?:)?//'
+            + site.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '[a-z0-9_][^"\'\\s]*)', 'i');
+        var match = site ? markup.match(pattern) : null;
+        if (match) {
+            return 'Links to ' + excerpt(match[1]) + ', with no / after the site\'s address';
+        }
+
+        // A link whose text is an address with a different scheme from where it goes,
+        // usually a template that puts its own http:// in front of the URL.
+        var anchors = /<a\b[^>]*?\bhref\s*=\s*["']\s*((https?):\/\/[^"']*)["'][^>]*>([\s\S]*?)<\/a\s*>/gi;
+        while ((match = anchors.exec(markup)) !== null) {
+            if (match[3].indexOf('://') === -1) {
+                continue;
+            }
+
+            var text = excerpt(match[3]);
+            var shown = text.match(/^(https?):\/\//i);
+            if (shown && shown[1].toLowerCase() !== match[2].toLowerCase()) {
+                return 'Has a link to ' + excerpt(match[1]) + ' with ' + text + ' as its text';
+            }
         }
 
         return '';
@@ -529,8 +583,11 @@
                 }
             }
 
+            // Built on the path, so a draft page's ?stage=Stage stays after the action.
             if (!found[action] && config.directActions.indexOf(action.toLowerCase()) !== -1) {
-                found[action] = stripTrailingSlash(pageUrl) + '/' + action;
+                var direct = new URL(pageUrl, config.baseUrl);
+                direct.pathname = stripTrailingSlash(direct.pathname) + '/' + action;
+                found[action] = direct.href;
             }
         });
 
@@ -603,7 +660,7 @@
             return;
         }
 
-        var result = await checkLink(url, true);
+        var result = await checkFrontendLink(row, url);
         result.problem = findContentProblem(result, false);
         span.innerHTML = statusBadge(result, [200], 'action:' + row.index + ':' + action);
     }
@@ -821,7 +878,7 @@
         }
 
         span.innerHTML = placeholder('...');
-        var result = await checkLink(row.frontendLink, true);
+        var result = await checkFrontendLink(row, row.frontendLink);
         result.problem = findContentProblem(result, true);
 
         if (state.stopRequested) {
@@ -1115,6 +1172,7 @@
                 pageId: result.id,
                 cmsLink: result.editLink,
                 frontendLink: result.frontendLink,
+                frontendNeedsLogin: result.frontendNeedsLogin,
                 expected: result.expectedStatus,
                 actions: result.allowedActions || [],
                 blockListUrls: result.blockListUrls || [],
@@ -2125,7 +2183,7 @@
         var container = el('actions-container-' + index);
         container.innerHTML = placeholder('...');
 
-        var result = await checkLink(row.frontendLink, true);
+        var result = await checkFrontendLink(row, row.frontendLink);
         if (!result.html) {
             container.innerHTML = '<span class="ptl-check-badge">' + icon('warning')
                 + ' could not load page</span>';

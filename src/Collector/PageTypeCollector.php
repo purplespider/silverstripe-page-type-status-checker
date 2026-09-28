@@ -10,6 +10,7 @@ use PurpleSpider\PageTypeTester\GridFieldFormFinder;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
 use SilverStripe\Admin\AdminRootController;
 use SilverStripe\CMS\Controllers\CMSPageSettingsController;
+use SilverStripe\CMS\Model\RedirectorPage;
 use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
@@ -171,7 +172,7 @@ class PageTypeCollector
             );
         }
 
-        $frontendLink = $this->frontendLinkFor($page, $shortClass, $baseUrl);
+        $frontendLink = static::frontendLinkFor($page, $baseUrl);
 
         return new PageTypeRow(
             $class,
@@ -185,11 +186,12 @@ class PageTypeCollector
             (string) $page->Title,
             Controller::join_links($baseUrl, 'admin/pages/edit/show', $page->ID),
             $frontendLink,
-            '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $frontendLink), '/'),
+            static::pageUrlFor($frontendLink, $baseUrl),
             ElementalSupport::blockListUrlsFor($page),
             $emailUsages,
             static::cmsScreenChecksFor($page),
-            GridFieldFormFinder::gridFieldsFor($page)
+            GridFieldFormFinder::gridFieldsFor($page),
+            !$page->isPublished()
         );
     }
 
@@ -202,18 +204,33 @@ class PageTypeCollector
     }
 
     /**
-     * RedirectorPage::AbsoluteLink() returns the redirect destination rather than the
-     * page's own URL, so build its URL from the parent instead.
+     * The page's frontend URL. A page only in draft, such as one the report created,
+     * is 404 on the live site, which would hide whatever its draft really does, so its
+     * link views the draft stage instead. That needs a CMS login, so it reports as
+     * login required rather than failed where there is none.
      */
-    private function frontendLinkFor(SiteTree $page, string $shortClass, string $baseUrl): string
+    public static function frontendLinkFor(SiteTree $page, string $baseUrl): string
     {
-        if ($shortClass !== 'RedirectorPage') {
-            return (string) $page->AbsoluteLink();
+        $link = (string) $page->AbsoluteLink();
+
+        // RedirectorPage::AbsoluteLink() returns the redirect destination rather than
+        // the page's own URL, so build its URL from the parent instead.
+        if ($page instanceof RedirectorPage) {
+            $parent = $page->Parent();
+            $parentLink = $parent && $parent->exists() ? $parent->AbsoluteLink() : $baseUrl;
+            $link = Controller::join_links($parentLink, $page->URLSegment);
         }
 
-        $parent = $page->Parent();
-        $parentLink = $parent && $parent->exists() ? $parent->AbsoluteLink() : $baseUrl;
+        return $page->isPublished() ? $link : Controller::join_links($link, '?stage=Stage');
+    }
 
-        return Controller::join_links($parentLink, $page->URLSegment);
+    /**
+     * The page's path, shown under its title, without the draft stage's query string.
+     */
+    public static function pageUrlFor(string $frontendLink, string $baseUrl): string
+    {
+        $link = strtok($frontendLink, '?') ?: $frontendLink;
+
+        return '/' . ltrim(str_replace(rtrim($baseUrl, '/'), '', $link), '/');
     }
 }

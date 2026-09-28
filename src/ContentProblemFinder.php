@@ -3,11 +3,12 @@
 namespace PurpleSpider\PageTypeTester;
 
 use PurpleSpider\PageTypeTester\Model\CheckResult;
+use SilverStripe\Control\Director;
 
 /**
  * Looks inside a 200 response for signs that it did not really work: error output,
- * template code or shortcodes that were never rendered, and a page that is cut off or
- * has no title.
+ * template code or shortcodes that were never rendered, broken links to the site
+ * itself, and a page that is cut off or has no title.
  *
  * Shared by the CLI report and (via the same rules reimplemented in JavaScript as
  * findContentProblem) the browser report, so that both agree on what fails.
@@ -38,6 +39,7 @@ class ContentProblemFinder
     {
         return $this->errorOutput($html)
             ?: $this->unrenderedCode($html)
+            ?: $this->brokenLink($html)
             ?: ($isDocument ? $this->documentProblem($html) : '');
     }
 
@@ -82,6 +84,38 @@ class ContentProblemFinder
         // Shortcodes that were never parsed, usually a link or image in the content.
         if (preg_match('/\[(?:sitetree_link|file_link|image|embed)[\s,]+\w+\s*=[^\]]*\]/i', $markup, $match)) {
             return 'Shows an unparsed shortcode: ' . $this->excerpt($match[0], false);
+        }
+
+        return '';
+    }
+
+    private function brokenLink(string $html): string
+    {
+        $markup = $this->withoutCode($html);
+
+        // The site's own address run straight into a path, as in
+        // https://example.comSecurity/logout. Silverstripe 6 dropped the trailing slash
+        // from $AbsoluteBaseURL, so templates that join it to a path break like this.
+        $site = preg_replace('#^https?://#i', '', rtrim(Director::absoluteBaseURL(), '/'));
+        $pattern = '#\b(?:href|src|action)\s*=\s*["\']\s*((?:https?:)?//' . preg_quote($site, '#')
+            . '[a-z0-9_][^"\'\s]*)#i';
+        if ($site !== '' && preg_match($pattern, $markup, $match)) {
+            return 'Links to ' . $this->excerpt($match[1]) . ', with no / after the site\'s address';
+        }
+
+        // A link whose text is an address with a different scheme from where it goes,
+        // usually a template that puts its own http:// in front of the URL.
+        $anchors = '#<a\b[^>]*?\bhref\s*=\s*["\']\s*((https?)://[^"\']*)["\'][^>]*>(.*?)</a\s*>#is';
+        preg_match_all($anchors, $markup, $matches, PREG_SET_ORDER);
+        foreach ($matches as $match) {
+            if (!str_contains($match[3], '://')) {
+                continue;
+            }
+
+            $text = $this->excerpt($match[3]);
+            if (preg_match('#^(https?)://#i', $text, $shown) && strcasecmp($shown[1], $match[2]) !== 0) {
+                return 'Has a link to ' . $this->excerpt($match[1]) . " with {$text} as its text";
+            }
         }
 
         return '';

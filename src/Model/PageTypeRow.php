@@ -21,6 +21,8 @@ class PageTypeRow
      *        CMS screens, such as Settings, only reported when they fail.
      * @param array<int, array{title: string, forms: array<int, array{model: string, title: string, url: string, isNew: bool}>}> $gridFields
      *        The GridFields on the page's edit form, each with the record and add forms to check.
+     * @param bool $frontendNeedsLogin True where the page is only in draft, so its frontend link
+     *        views the draft stage, which only somebody logged in to the CMS can see.
      */
     public function __construct(
         public readonly string $class,
@@ -38,7 +40,8 @@ class PageTypeRow
         public readonly array $blockListUrls = [],
         public readonly array $emailUsages = [],
         public readonly array $cmsScreenChecks = [],
-        public readonly array $gridFields = []
+        public readonly array $gridFields = [],
+        public readonly bool $frontendNeedsLogin = false
     ) {
     }
 

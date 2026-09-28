@@ -2,6 +2,7 @@
 
 namespace PurpleSpider\PageTypeTester;
 
+use SilverStripe\Control\Controller;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Config\Configurable;
 
@@ -61,7 +62,8 @@ class ActionLinkFinder
             }
 
             if (!isset($found[$action]) && in_array(strtolower($action), self::getDirectActions(), true)) {
-                $found[$action] = rtrim($pageUrl, '/') . '/' . $action;
+                // join_links() keeps a draft page's ?stage=Stage after the action.
+                $found[$action] = Controller::join_links($pageUrl, $action);
             }
         }
 
@@ -83,6 +85,6 @@ class ActionLinkFinder
             return rtrim($baseUrl, '/') . $link;
         }
 
-        return rtrim($pageUrl, '/') . '/' . $link;
+        return Controller::join_links($pageUrl, $link);
     }
 }

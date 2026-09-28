@@ -1078,8 +1078,11 @@ class HtmlReport
             . "class the grid lists, and its add form. The cards stay folded away unless one of them fails</li>"
             . "<li><strong>Frontend</strong> &ndash; the page URL returns its expected status (200, or 404/500 "
             . "for ErrorPage, or a redirect for RedirectorPage). A 200 still fails if the page shows PHP error "
-            . "or debug output, unrendered template code or shortcodes, has no title, or stops before "
-            . "<code>&lt;/html&gt;</code>. Actions and blocks are searched for the same error output and code</li>"
+            . "or debug output, unrendered template code or shortcodes, a link to the site's own address with "
+            . "no / before the path, a link whose text is an http:// address going to https:// or the other "
+            . "way round, has no title, or stops before <code>&lt;/html&gt;</code>. Actions and blocks are "
+            . "searched for the same error output, code and links. A page type with only draft pages is "
+            . "checked on the draft stage, which needs a CMS login</li>"
             . "<li><strong>Actions</strong> &ndash; where a controller declares <code>\$allowed_actions</code>, "
             . "links beneath the page's own URL are found and checked</li>"
             . "<li><strong>Forms</strong> &ndash; <code>&lt;form&gt;</code> tags in the main content are flagged "
@@ -1125,6 +1128,7 @@ class HtmlReport
                 'pageId' => (int) $row->page->ID,
                 'cmsLink' => $row->cmsLink,
                 'frontendLink' => $row->frontendLink,
+                'frontendNeedsLogin' => $row->frontendNeedsLogin,
                 'expected' => $row->expectedStatus,
                 'actions' => array_values($row->allowedActions),
                 'blockListUrls' => array_values($row->blockListUrls),
