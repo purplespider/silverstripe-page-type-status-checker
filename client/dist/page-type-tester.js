@@ -1871,6 +1871,8 @@
             progress.classList.toggle('ptl-tested-complete', complete);
         });
 
+        renderTestedTotal();
+
         document.querySelectorAll('[data-ptl-action="toggle-hide-tested"]').forEach(function (toggle) {
             var tableId = toggle.getAttribute('data-ptl-table');
             var hiding = hideTested[tableId] === true;
@@ -1884,6 +1886,32 @@
             toggle.innerHTML = (hiding ? icon('eye') + ' Show Tested' : icon('eye-slash') + ' Hide Tested')
                 + '<span class="ptl-sr-only"> ' + escapeHtml(toggle.getAttribute('data-ptl-label')) + '</span>';
         });
+    }
+
+    /**
+     * Every table's ticks together, floating under the summary so the end is in sight
+     * wherever the page is scrolled to. Left out until the first tick, as until then
+     * nobody is working through them.
+     */
+    function renderTestedTotal() {
+        var badge = el('ptl-tested-total');
+        if (!badge) {
+            return;
+        }
+
+        var total = document.querySelectorAll('[data-ptl-tested]').length;
+        var done = document.querySelectorAll('[data-ptl-tested]:checked').length;
+        var complete = total > 0 && done === total;
+
+        if (!done) {
+            badge.innerHTML = '';
+        } else if (complete) {
+            badge.innerHTML = icon('check') + ' All ' + total + ' tested';
+        } else {
+            badge.innerHTML = done + ' tested, ' + (total - done) + ' to go';
+        }
+
+        badge.classList.toggle('ptl-tested-complete', complete);
     }
 
     function toggleHideTested(button) {

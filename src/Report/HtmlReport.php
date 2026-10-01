@@ -100,7 +100,11 @@ class HtmlReport
             . "<div class='ptl-header-title'><h1>" . $this->esc($title) . "</h1>" . $badges . "</div>"
             . "<p class='ptl-desc'>Checks the HTTP status code of the frontend and CMS edit form for each page "
             . "type.</p></div>"
-            . "<output id='ptl-summary' aria-live='polite'></output></div>"
+            // The check results, and below them how many rows have been ticked as tested.
+            . "<div class='ptl-floats'>"
+            . "<output id='ptl-summary' aria-live='polite'></output>"
+            . "<output id='ptl-tested-total' aria-live='polite'></output>"
+            . "</div></div>"
         );
     }
 

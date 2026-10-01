@@ -96,6 +96,18 @@ p.ptl-desc {
     background: none !important;
 }
 
+/* The check summary, with the tested count stacked under it. */
+.ptl-floats {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
 #ptl-summary {
     font-size: 18px;
     font-weight: 600;
@@ -103,14 +115,34 @@ p.ptl-desc {
     border-radius: 6px;
     background: #f8f9fa;
     white-space: nowrap;
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 1000;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-#ptl-summary:empty {
+/* Only there once something has been ticked. #495057 on white is 8.2:1. */
+#ptl-tested-total {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border: 1px solid var(--ptl-border);
+    border-radius: 6px;
+    background: var(--ptl-surface);
+    color: var(--ptl-muted-on-grey);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* The same green as a passing summary: #0a3622 on #d1e7dd is 10.4:1. */
+#ptl-tested-total.ptl-tested-complete {
+    background: #d1e7dd;
+    border-color: #a3cfbb;
+    color: #0a3622;
+}
+
+:is(#ptl-summary, #ptl-tested-total):empty {
     display: none;
 }
 
