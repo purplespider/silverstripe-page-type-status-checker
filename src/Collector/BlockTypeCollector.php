@@ -137,12 +137,18 @@ class BlockTypeCollector
                 Versioned::set_stage($stage);
 
                 $blocks = DataObject::get($class)->filter(['ClassName' => $class, 'ParentID:GreaterThan' => 0]);
+                $pageClass = DataObject::getSchema()->hasOneComponent($class, 'Page');
+                if ($pageClass && is_a($pageClass, SiteTree::class, true)) {
+                    // Let the database discard stale PageIDs instead of resolving up
+                    // to MAX_CANDIDATES orphaned blocks one at a time.
+                    $blocks = $blocks->filter('Page.ID:GreaterThan', 0);
+                }
                 if ($this->randomise) {
                     $blocks = $blocks->shuffle();
                 }
 
                 foreach ($blocks->limit(self::MAX_CANDIDATES) as $block) {
-                    $page = $block->getPage();
+                    $page = $this->pageFor($block);
                     if ($page) {
                         return $this->describe($block, $page, $stage === Versioned::LIVE);
                     }
@@ -157,6 +163,24 @@ class BlockTypeCollector
         }
 
         return null;
+    }
+
+    /**
+     * Uses a direct Page relation where a project provides one. BaseElement::getPage()
+     * otherwise has to search every supported page type and each of its Elemental
+     * relations, which becomes expensive on sites with many page and block types.
+     */
+    private function pageFor(DataObject $block): ?DataObject
+    {
+        $pageClass = DataObject::getSchema()->hasOneComponent($block, 'Page');
+        if ($pageClass && is_a($pageClass, SiteTree::class, true) && (int) $block->getField('PageID') > 0) {
+            $page = $block->getComponent('Page');
+            if ($page && $page->exists()) {
+                return $page;
+            }
+        }
+
+        return $block->getPage();
     }
 
     /**

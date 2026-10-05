@@ -140,8 +140,6 @@ class PageTypeTesterTask extends BuildTask
         $liveDomain = $this->sanitiseLiveDomain((string) ($input->getOption('live-domain') ?? ''));
 
         $checker = new UrlChecker($this->resolveVerifySsl($input));
-        $actionFinder = new ActionLinkFinder();
-
         // Shared, so a file reached from several types is only read once.
         $emailFinder = new EmailUsageFinder();
 
@@ -149,15 +147,17 @@ class PageTypeTesterTask extends BuildTask
         $blockRows = $skipBlocks ? [] : (new BlockTypeCollector($randomise, $emailFinder))->collect();
         $adminSections = $skipAdmin ? [] : (new AdminSectionCollector($emailFinder))->collect();
 
-        $createdPageIds = CreatedPageRegistry::forCurrentRequest()->existing();
+        if ($output->getOutputFormat() === PolyOutput::FORMAT_HTML) {
+            $createdPageIds = CreatedPageRegistry::forCurrentRequest()->existing();
+            $htmlReport = new HtmlReport($checker, $liveDomain, $randomise, $createdPageIds);
+            $htmlReport->renderHeader($output, $this->getTitle());
+            $htmlReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 
-        $htmlReport = new HtmlReport($checker, $liveDomain, $randomise, $createdPageIds);
-        $htmlReport->renderHeader($output, $this->getTitle());
+            return Command::SUCCESS;
+        }
 
-        $cliReport = new CliReport($checker, $actionFinder, $skipActions);
+        $cliReport = new CliReport($checker, new ActionLinkFinder(), $skipActions);
         $cliReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
-
-        $htmlReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 
         // A checking tool that always succeeds is not much use in a pipeline.
         return $cliReport->hasFailures() ? Command::FAILURE : Command::SUCCESS;
