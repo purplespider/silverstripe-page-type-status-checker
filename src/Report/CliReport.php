@@ -9,6 +9,7 @@ use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
 use PurpleSpider\PageTypeTester\Model\CheckResult;
 use PurpleSpider\PageTypeTester\Model\EmailUsage;
 use PurpleSpider\PageTypeTester\Model\PageTypeRow;
+use PurpleSpider\PageTypeTester\ReportMeta;
 use PurpleSpider\PageTypeTester\UrlChecker;
 use SilverStripe\Control\Director;
 use SilverStripe\PolyExecution\PolyOutput;
@@ -26,6 +27,16 @@ class CliReport
     private int $checked = 0;
 
     private int $loginRequired = 0;
+
+    /** No text output: the results are wanted as data ({@see toArray()}), e.g. for --json. */
+    private bool $quiet = false;
+
+    /**
+     * Every check, in order, for {@see toArray()}.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    private array $checks = [];
 
     /**
      * @var array<int, array{type: string, subject: string, url: string, status: string, problem: string}>
@@ -47,6 +58,41 @@ class CliReport
     ) {
     }
 
+    public function setQuiet(bool $quiet): void
+    {
+        $this->quiet = $quiet;
+    }
+
+    private function write(PolyOutput $output, string $text): void
+    {
+        if (!$this->quiet) {
+            $output->writeForAnsi($text);
+        }
+    }
+
+    /**
+     * The results as data: a summary and every check with its outcome (pass, fail,
+     * warning, login_required or not_found), for scripts comparing runs.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'site' => ReportMeta::siteName(),
+            'cms' => ReportMeta::cmsVersion(),
+            'base_url' => Director::absoluteBaseURL(),
+            'summary' => [
+                'checked' => $this->checked,
+                'passed' => $this->passed,
+                'failed' => $this->failed,
+                'warnings' => count($this->warnings),
+                'login_required' => $this->loginRequired,
+            ],
+            'checks' => $this->checks,
+        ];
+    }
+
     /**
      * @param PageTypeRow[] $rows
      * @param BlockTypeRow[] $blockRows Empty when Elemental is not installed or blocks are skipped.
@@ -60,10 +106,10 @@ class CliReport
         bool $skipAdmin
     ): void {
         if (!$this->checker->isVerifyingSsl()) {
-            $output->writeForAnsi("<comment>TLS certificate verification is off for this run.</comment>\n");
+            $this->write($output, "<comment>TLS certificate verification is off for this run.</comment>\n");
         }
 
-        $output->writeForAnsi(
+        $this->write($output, 
             "\n<comment>Checking URLs" . ($this->skipActions ? ' (skipping actions)' : ' and actions') . "...</comment>\n\n"
         );
 
@@ -72,16 +118,16 @@ class CliReport
         }
 
         if ($blockRows) {
-            $output->writeForAnsi("\n<comment>Checking block types...</comment>\n\n");
+            $this->write($output, "\n<comment>Checking block types...</comment>\n\n");
             foreach ($blockRows as $blockRow) {
                 $this->renderBlockType($output, $blockRow);
             }
         }
 
         if ($skipAdmin) {
-            $output->writeForAnsi("\n<comment>Skipping admin sections.</comment>\n");
+            $this->write($output, "\n<comment>Skipping admin sections.</comment>\n");
         } else {
-            $output->writeForAnsi("\n<comment>Checking admin sections...</comment>\n\n");
+            $this->write($output, "\n<comment>Checking admin sections...</comment>\n\n");
             foreach ($adminSections as $section) {
                 $this->renderAdminSection($output, $section);
             }
@@ -93,13 +139,13 @@ class CliReport
     private function renderPageType(PolyOutput $output, PageTypeRow $row): void
     {
         if (!$row->hasPage()) {
-            $output->writeForAnsi("<comment>{$row->shortClass}</comment> (0): no pages to check");
+            $this->write($output, "<comment>{$row->shortClass}</comment> (0): no pages to check");
             $this->renderEmailUsages($output, $row->emailUsages);
-            $output->writeForAnsi("\n");
+            $this->write($output, "\n");
             return;
         }
 
-        $output->writeForAnsi("<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
+        $this->write($output, "<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
         $this->renderEmailUsages($output, $row->emailUsages);
 
         $frontendResult = $this->checker->check($row->frontendLink);
@@ -133,7 +179,7 @@ class CliReport
 
         $this->renderActions($output, $row, $frontendResult);
 
-        $output->writeForAnsi("\n");
+        $this->write($output, "\n");
     }
 
     /**
@@ -177,13 +223,13 @@ class CliReport
     private function renderBlockType(PolyOutput $output, BlockTypeRow $row): void
     {
         if (!$row->hasElement()) {
-            $output->writeForAnsi("<comment>{$row->shortClass}</comment> ({$row->totalCount}): no blocks to check");
+            $this->write($output, "<comment>{$row->shortClass}</comment> ({$row->totalCount}): no blocks to check");
             $this->renderEmailUsages($output, $row->emailUsages);
-            $output->writeForAnsi("\n");
+            $this->write($output, "\n");
             return;
         }
 
-        $output->writeForAnsi("<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
+        $this->write($output, "<info>{$row->shortClass}</info> ({$row->liveCount} + {$row->getDraftOnlyCount()}):");
         $this->renderEmailUsages($output, $row->emailUsages);
 
         $checks = [
@@ -215,7 +261,7 @@ class CliReport
             $this->reportJsonError($output, $result);
         }
 
-        $output->writeForAnsi("\n");
+        $this->write($output, "\n");
     }
 
     /**
@@ -227,7 +273,7 @@ class CliReport
     private function renderEmailUsages(PolyOutput $output, array $usages, string $indent = '  '): void
     {
         foreach ($usages as $usage) {
-            $output->writeForAnsi(
+            $this->write($output, 
                 "\n{$indent}<fg=cyan>✉</> Sends email: " . OutputFormatter::escape($usage->getLocation())
                 . ' <comment>(' . OutputFormatter::escape($usage->getDetail()) . ')</comment>'
             );
@@ -249,7 +295,7 @@ class CliReport
             return;
         }
 
-        $output->writeForAnsi("\n    <comment>" . OutputFormatter::escape($data['error']) . "</comment>");
+        $this->write($output, "\n    <comment>" . OutputFormatter::escape($data['error']) . "</comment>");
     }
 
     private function renderActions(PolyOutput $output, PageTypeRow $row, CheckResult $frontendResult): void
@@ -259,12 +305,12 @@ class CliReport
         }
 
         if ($this->skipActions) {
-            $output->writeForAnsi("\n  <comment>Actions skipped: " . implode(', ', $row->allowedActions) . "</comment>");
+            $this->write($output, "\n  <comment>Actions skipped: " . implode(', ', $row->allowedActions) . "</comment>");
             return;
         }
 
         if ($frontendResult->body === '') {
-            $output->writeForAnsi("\n  <fg=yellow>?</> Actions: <comment>could not fetch page HTML to find action links</comment>");
+            $this->write($output, "\n  <fg=yellow>?</> Actions: <comment>could not fetch page HTML to find action links</comment>");
             return;
         }
 
@@ -277,7 +323,16 @@ class CliReport
 
         foreach ($row->allowedActions as $action) {
             if (!isset($actionLinks[$action])) {
-                $output->writeForAnsi("\n  <fg=yellow>?</> Action /{$action}: <comment>not found on page</comment>");
+                $this->checks[] = [
+                    'subject' => $row->shortClass,
+                    'label' => "Action /{$action}",
+                    'url' => null,
+                    'status' => null,
+                    'outcome' => 'not_found',
+                    'problem' => 'not found on page',
+                    'redirect' => null,
+                ];
+                $this->write($output, "\n  <fg=yellow>?</> Action /{$action}: <comment>not found on page</comment>");
                 continue;
             }
 
@@ -298,7 +353,7 @@ class CliReport
 
     private function renderAdminSection(PolyOutput $output, AdminSection $section): void
     {
-        $output->writeForAnsi("<info>{$section->name}</info> ({$section->type}):");
+        $this->write($output, "<info>{$section->name}</info> ({$section->type}):");
         $this->renderEmailUsages($output, $section->emailUsages);
 
         // Records with no edit form to report them under, such as a model with no records.
@@ -323,7 +378,7 @@ class CliReport
             $this->renderEmailUsages($output, $editLink->emailUsages, '    ');
         }
 
-        $output->writeForAnsi("\n");
+        $this->write($output, "\n");
     }
 
     /**
@@ -344,9 +399,25 @@ class CliReport
     ): void {
         $this->checked++;
 
+        $outcome = match (true) {
+            $result->loginRequired => 'login_required',
+            $result->matches($expected) && $problem === '' && $warning !== '' => 'warning',
+            $result->matches($expected) && $problem === '' => 'pass',
+            default => 'fail',
+        };
+        $this->checks[] = [
+            'subject' => $subject,
+            'label' => $label,
+            'url' => $url,
+            'status' => $result->status,
+            'outcome' => $outcome,
+            'problem' => $problem !== '' ? $problem : ($warning !== '' ? $warning : null),
+            'redirect' => $result->isRedirect() && $result->redirectUrl ? $result->redirectUrl : null,
+        ];
+
         if ($result->loginRequired) {
             $this->loginRequired++;
-            $output->writeForAnsi("\n  <fg=yellow>⚠</> {$label}: {$url} <comment>[login required]</comment>");
+            $this->write($output, "\n  <fg=yellow>⚠</> {$label}: {$url} <comment>[login required]</comment>");
             return;
         }
 
@@ -357,7 +428,7 @@ class CliReport
                 'url' => $url,
                 'problem' => $warning,
             ];
-            $output->writeForAnsi(
+            $this->write($output, 
                 "\n  <fg=yellow>⚠</> {$label}: {$url} [{$result->getLabel()}] <comment>"
                 . OutputFormatter::escape($warning) . '</comment>'
             );
@@ -366,7 +437,7 @@ class CliReport
 
         if ($result->matches($expected) && $problem === '') {
             $this->passed++;
-            $output->writeForAnsi("\n  <fg=green>✓</> {$label}: {$url} [{$result->getLabel()}]");
+            $this->write($output, "\n  <fg=green>✓</> {$label}: {$url} [{$result->getLabel()}]");
             return;
         }
 
@@ -377,7 +448,7 @@ class CliReport
         if ($problem !== '') {
             $note = ' <comment>' . OutputFormatter::escape($problem) . '</comment>';
         }
-        $output->writeForAnsi("\n  <fg=red>✗</> {$label}: {$url} <fg=red>[{$result->getLabel()}]</>{$note}");
+        $this->write($output, "\n  <fg=red>✗</> {$label}: {$url} <fg=red>[{$result->getLabel()}]</>{$note}");
 
         $this->failures[] = [
             'type' => $failureType ?? $label,
@@ -391,9 +462,9 @@ class CliReport
     private function renderSummary(PolyOutput $output): void
     {
         if ($this->failures) {
-            $output->writeForAnsi("\n<fg=red;options=bold>FAILED URLs ({$this->failed}):</>\n");
+            $this->write($output, "\n<fg=red;options=bold>FAILED URLs ({$this->failed}):</>\n");
             foreach ($this->failures as $failure) {
-                $output->writeForAnsi(
+                $this->write($output, 
                     "  <fg=red>✗</> <options=bold>{$failure['subject']}</> {$failure['type']}: "
                     . "{$failure['url']} <fg=red>[{$failure['status']}]</>"
                     . ($failure['problem'] === '' ? '' : ' <comment>' . OutputFormatter::escape($failure['problem']) . '</comment>')
@@ -403,9 +474,9 @@ class CliReport
         }
 
         if ($this->warnings) {
-            $output->writeForAnsi("\n<fg=yellow;options=bold>WARNINGS (" . count($this->warnings) . "):</>\n");
+            $this->write($output, "\n<fg=yellow;options=bold>WARNINGS (" . count($this->warnings) . "):</>\n");
             foreach ($this->warnings as $warning) {
-                $output->writeForAnsi(
+                $this->write($output, 
                     "  <fg=yellow>⚠</> <options=bold>{$warning['subject']}</> {$warning['type']}: {$warning['url']}"
                     . ' <comment>' . OutputFormatter::escape($warning['problem']) . "</comment>\n"
                 );
@@ -414,14 +485,14 @@ class CliReport
 
         if ($this->loginRequired > 0) {
             $loginUrl = $this->checker->getLoginUrl();
-            $output->writeForAnsi(
+            $this->write($output, 
                 "\n<fg=yellow;options=bold>NOT LOGGED IN - {$this->loginRequired} CMS URLs could not be checked</>\n"
             );
-            $output->writeForAnsi("  These URLs redirect to {$loginUrl}, so there is nothing useful to check.\n");
-            $output->writeForAnsi("  The CLI has no CMS session. Run the task in a browser while logged in.\n");
+            $this->write($output, "  These URLs redirect to {$loginUrl}, so there is nothing useful to check.\n");
+            $this->write($output, "  The CLI has no CMS session. Run the task in a browser while logged in.\n");
         }
 
-        $output->writeForAnsi(
+        $this->write($output, 
             "\n<options=bold>Results:</> <fg=green>{$this->passed} passed</>, <fg=red>{$this->failed} failed</>"
             . ($this->warnings ? ', <fg=yellow>' . count($this->warnings) . ' with warnings</>' : '')
             . ($this->loginRequired > 0 ? ", <fg=yellow>{$this->loginRequired} need login</>" : '')

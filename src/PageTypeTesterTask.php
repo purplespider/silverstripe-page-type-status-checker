@@ -8,6 +8,7 @@ use PurpleSpider\PageTypeTester\Collector\PageTypeCollector;
 use PurpleSpider\PageTypeTester\Report\CliReport;
 use PurpleSpider\PageTypeTester\Report\HtmlReport;
 use SilverStripe\Control\Controller;
+use SilverStripe\Control\Director;
 use SilverStripe\Control\HTTPRequest;
 use SilverStripe\Dev\BuildTask;
 use SilverStripe\PolyExecution\PolyOutput;
@@ -83,12 +84,37 @@ class PageTypeTesterTask extends BuildTask
                 InputOption::VALUE_REQUIRED,
                 'Verify TLS certificates: 1 or 0. Defaults to off in dev mode, on elsewhere.'
             ),
+            new InputOption(
+                'base-url',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'CLI only: site URL to check against instead of SS_BASE_URL, e.g. https://example.test'
+            ),
+            new InputOption(
+                'json',
+                null,
+                InputOption::VALUE_NONE,
+                'CLI only: print the results as JSON instead of the text report'
+            ),
         ];
     }
 
     public function run(InputInterface $input, PolyOutput $output): int
     {
         $request = $this->getHttpRequest();
+
+        // CLI only: in a browser these would come from the query string, and the base URL
+        // decides which host the server sends requests to.
+        if (!$request) {
+            $baseUrl = $this->sanitiseLiveDomain((string) ($input->getOption('base-url') ?? ''));
+            if ($baseUrl !== '') {
+                Director::config()->set('alternate_base_url', $baseUrl . '/');
+            }
+
+            if ($input->getOption('json')) {
+                return $this->execute($input, $output);
+            }
+        }
 
         // These write to the database, so they are handled before anything is rendered
         // and terminate the request with a JSON response.
@@ -154,8 +180,21 @@ class PageTypeTesterTask extends BuildTask
         $htmlReport = new HtmlReport($checker, $liveDomain, $randomise, $createdPageIds);
         $htmlReport->renderHeader($output, $this->getTitle());
 
+        $json = !$this->getHttpRequest() && $input->getOption('json');
+
         $cliReport = new CliReport($checker, $actionFinder, $skipActions);
+        $cliReport->setQuiet($json);
         $cliReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
+
+        if ($json) {
+            $output->write(
+                json_encode($cliReport->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n",
+                false,
+                PolyOutput::OUTPUT_RAW
+            );
+
+            return $cliReport->hasFailures() ? Command::FAILURE : Command::SUCCESS;
+        }
 
         $htmlReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 

@@ -59,8 +59,33 @@ The command exits with a non-zero status if any check fails, so it can be used i
 | `--randomise` | Pick a random example page per type instead of the first |
 | `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare button |
 | `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
+| `--base-url=URL` | CLI only. Check against this URL instead of `SS_BASE_URL`, e.g. the local Herd URL when `SS_BASE_URL` points somewhere else |
+| `--json` | CLI only. Print the results as JSON instead of the text report (see below) |
 
-All options also work as query string parameters in the browser.
+All options except `--base-url` and `--json` also work as query string parameters in the browser.
+
+### JSON output
+
+```bash
+vendor/bin/sake tasks:check-page-type-statuses --base-url=https://example.test --json
+```
+
+prints a summary and every check, so a script can compare runs, e.g. before and after an upgrade:
+
+```json
+{
+    "site": "Example",
+    "cms": "Silverstripe 6.2.11",
+    "base_url": "https://example.test",
+    "summary": { "checked": 29, "passed": 12, "failed": 0, "warnings": 0, "login_required": 17 },
+    "checks": [
+        { "subject": "NewsHolder", "label": "Action /rss", "url": "https://example.test/news/rss",
+          "status": 200, "outcome": "pass", "problem": null, "redirect": null }
+    ]
+}
+```
+
+`outcome` is `pass`, `fail`, `warning` (works, but has a broken link on it), `login_required` (CMS URLs, as the CLI has no session) or `not_found` (an `allowed_actions` action with no link on the page). The exit status is the same as the text report's.
 
 ## Configuration
 
