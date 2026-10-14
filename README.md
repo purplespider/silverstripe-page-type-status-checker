@@ -45,7 +45,9 @@ Visit `/dev/tasks/check-page-type-statuses` in your browser while logged in as a
 vendor/bin/sake tasks:check-page-type-statuses
 ```
 
-The CLI has no CMS session, so CMS and admin URLs will always redirect to the login screen. 
+The CLI logs itself in to the CMS for the run, so it checks the same URLs as the browser report, CMS ones included, as the first admin on the site (or the member given with `--as`). It does this with Silverstripe's own "remember me" login: a login token that expires within the hour and is deleted when the run ends. With [session-manager](https://github.com/silverstripe/silverstripe-session-manager) installed, as it is with `recipe-cms`, the run shows in that member's list of sessions while it lasts. Their own logins elsewhere are not touched.
+
+The login is only valid on a site sharing this database. With `--base-url` pointing anywhere else, such as the live site, CMS URLs redirect to the login screen and are reported as needing login, and the summary says why. Use `--no-login` to check as an anonymous visitor.
 
 The command exits with a non-zero status if any check fails, so it can be used in a pipeline.
 
@@ -61,8 +63,10 @@ The command exits with a non-zero status if any check fails, so it can be used i
 | `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
 | `--base-url=URL` | CLI only. Check against this URL instead of `SS_BASE_URL`, e.g. the local Herd URL when `SS_BASE_URL` points somewhere else |
 | `--json` | CLI only. Print the results as JSON instead of the text report (see below) |
+| `--as=EMAIL` | CLI only. Check as this CMS user rather than the first admin |
+| `--no-login` | CLI only. Check without logging in to the CMS |
 
-All options except `--base-url` and `--json` also work as query string parameters in the browser.
+All options except the CLI only ones also work as query string parameters in the browser.
 
 ### JSON output
 
@@ -77,6 +81,7 @@ prints a summary and every check, so a script can compare runs, e.g. before and 
     "site": "Example",
     "cms": "Silverstripe 6.2.11",
     "base_url": "https://example.test",
+    "checked_as": "admin@example.com",
     "summary": { "checked": 29, "passed": 12, "failed": 0, "warnings": 0, "login_required": 17 },
     "checks": [
         { "subject": "NewsHolder", "label": "Action /rss", "url": "https://example.test/news/rss",
@@ -85,7 +90,7 @@ prints a summary and every check, so a script can compare runs, e.g. before and 
 }
 ```
 
-`outcome` is `pass`, `fail`, `warning` (works, but has a broken link on it), `login_required` (CMS URLs, as the CLI has no session) or `not_found` (an `allowed_actions` action with no link on the page). The exit status is the same as the text report's.
+`outcome` is `pass`, `fail`, `warning` (works, but has a broken link on it), `login_required` (CMS URLs that redirected to the login screen, such as with `--no-login`) or `not_found` (an `allowed_actions` action with no link on the page). The exit status is the same as the text report's.
 
 ## Configuration
 
@@ -117,12 +122,12 @@ PurpleSpider\PageTypeTester\EmailUsageFinder:
 
 - Redirects are **not** followed. A page that redirects is reported with its own status rather than the status of wherever it points, so a page silently redirecting to the home page shows as a failure rather than a pass. The CLI and browser reports agree on this.
 - `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
-- A page type whose only pages are in draft, including a page the report created, is checked on the draft stage (`?stage=Stage`), along with its actions. Its live URL would be a 404, which hides whatever the draft really does, such as a 500. The draft stage needs a CMS login, so without one, as in the CLI, it is reported as needing login rather than failed.
+- A page type whose only pages are in draft, including a page the report created, is checked on the draft stage (`?stage=Stage`), along with its actions. Its live URL would be a 404, which hides whatever the draft really does, such as a 500. The draft stage needs a CMS login, so without one, as with `--no-login`, it is reported as needing login rather than failed.
 - A 200 is not always a pass. A page also fails if it shows PHP error output (Silverstripe's error view, PHP's own, or `Debug::message()`/`Debug::show()` left in the code), unrendered template code (`<% if %>`, `{$Title}`), an unparsed shortcode (`[sitetree_link,id=5]`), has no or an empty `<title>`, or stops before `</html>`. Actions and blocks are searched for the same error output and code.
 - A 200 gets an orange warning, rather than failing, where a link, image or form runs the site's own address straight into a path (`https://example.comSecurity/logout`, from joining Silverstripe 6's `$AbsoluteBaseURL`, which no longer ends in a slash, to a path), or a link's text is an address with a different scheme from the link (text `http://...`, going to `https://...`). The page works, but the link does not. Actions and blocks are searched for the same links. Warnings are counted separately, and do not fail the CLI run. A bare `$Title` is not flagged, as it also matches prices and copy. In dev mode most PHP warnings already answer 500, so this mainly catches what still gets through as a 200.
 - Each page's Settings and History screens in the CMS (`admin/pages/settings/show/{id}`, `admin/pages/history/show/{id}`) are checked along with its edit form. History is also checked through the request that loads its list of versions, as the screen itself answers 200 either way. They are only shown when they fail, as a small badge under the edit form's status.
-- Each GridField on a page's edit form, such as a `has_many` that Silverstripe 6 scaffolds into its own tab, gets a card under the edit form's status, laid out like the frontend actions: status, then the form, then the class it was built for. The card checks the edit form of one record of each class the grid lists, as each class builds its own fields, and the grid's add form if it has an Add button the current user can use. The cards are folded away under one line giving a single status for all of them, such as `200 3 GridFields`, and open by themselves when any form fails. The edit form answers 200 however broken these are, as the grid only lists its records, and the add form builds `getCMSFields()` for an unsaved record, which is where code that assumes a saved one falls over. The links come from the page's real edit form, so they are only found for a logged-in user, and not in the CLI. Elemental's block area is left out, as its block list is already checked.
-- Admin sections check the edit form of one record of each model, and, where the section has an Add button that you can use, the form for a new record. Models that need sudo mode, such as Member and Group, only have an Add button while sudo mode is active, so their add forms are only checked then.
+- Each GridField on a page's edit form, such as a `has_many` that Silverstripe 6 scaffolds into its own tab, gets a card under the edit form's status, laid out like the frontend actions: status, then the form, then the class it was built for. The card checks the edit form of one record of each class the grid lists, as each class builds its own fields, and the grid's add form if it has an Add button the current user can use. The cards are folded away under one line giving a single status for all of them, such as `200 3 GridFields`, and open by themselves when any form fails. The edit form answers 200 however broken these are, as the grid only lists its records, and the add form builds `getCMSFields()` for an unsaved record, which is where code that assumes a saved one falls over. The links come from the page's real edit form, so they are only found for a logged-in user, which the CLI is unless run with `--no-login`. Elemental's block area is left out, as its block list is already checked.
+- Admin sections check the edit form of one record of each model, and, where the section has an Add button that you can use, the form for a new record. Models that need sudo mode, such as Member and Group, only have an Add button while sudo mode is active, so their add forms are only checked then, and never by the CLI, whose login does not start sudo mode.
 - An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
 - Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
 - An action that is a form on the page (the form's id is `Form_{Action}`, or it submits to `.../{Action}`) is shown once, as a "form action" linking to the form, rather than as a separate action to check. `index` is never listed, as it is the page itself.

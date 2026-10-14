@@ -3,6 +3,7 @@
 namespace PurpleSpider\PageTypeTester\Report;
 
 use PurpleSpider\PageTypeTester\ActionLinkFinder;
+use PurpleSpider\PageTypeTester\CliLogin;
 use PurpleSpider\PageTypeTester\ContentProblemFinder;
 use PurpleSpider\PageTypeTester\Model\AdminSection;
 use PurpleSpider\PageTypeTester\Model\BlockTypeRow;
@@ -27,6 +28,9 @@ class CliReport
     private int $checked = 0;
 
     private int $loginRequired = 0;
+
+    /** The CMS login this run checks with, if any. */
+    private ?CliLogin $login = null;
 
     /** No text output: the results are wanted as data ({@see toArray()}), e.g. for --json. */
     private bool $quiet = false;
@@ -63,6 +67,11 @@ class CliReport
         $this->quiet = $quiet;
     }
 
+    public function setLogin(?CliLogin $login): void
+    {
+        $this->login = $login;
+    }
+
     private function write(PolyOutput $output, string $text): void
     {
         if (!$this->quiet) {
@@ -82,6 +91,7 @@ class CliReport
             'site' => ReportMeta::siteName(),
             'cms' => ReportMeta::cmsVersion(),
             'base_url' => Director::absoluteBaseURL(),
+            'checked_as' => $this->login ? $this->checkedAs() : null,
             'summary' => [
                 'checked' => $this->checked,
                 'passed' => $this->passed,
@@ -107,6 +117,13 @@ class CliReport
     ): void {
         if (!$this->checker->isVerifyingSsl()) {
             $this->write($output, "<comment>TLS certificate verification is off for this run.</comment>\n");
+        }
+
+        if ($this->login) {
+            $this->write($output,
+                '<comment>Checking as ' . OutputFormatter::escape($this->checkedAs())
+                . ", with a temporary CMS login that is removed afterwards.</comment>\n"
+            );
         }
 
         $this->write($output, 
@@ -489,7 +506,16 @@ class CliReport
                 "\n<fg=yellow;options=bold>NOT LOGGED IN - {$this->loginRequired} CMS URLs could not be checked</>\n"
             );
             $this->write($output, "  These URLs redirect to {$loginUrl}, so there is nothing useful to check.\n");
-            $this->write($output, "  The CLI has no CMS session. Run the task in a browser while logged in.\n");
+            if ($this->login) {
+                // Logged in, but the site did not accept it.
+                $this->write($output,
+                    '  The site did not accept the CLI\'s login as ' . OutputFormatter::escape($this->checkedAs()) . ".\n"
+                    . "  If --base-url points at another site, it has its own database, where the login does not exist.\n"
+                    . "  Otherwise check that the member can use the CMS, and that their password has not expired.\n"
+                );
+            } else {
+                $this->write($output, "  The CLI was not logged in to the CMS (--no-login, or the site has no admin).\n");
+            }
         }
 
         $this->write($output, 
@@ -498,6 +524,13 @@ class CliReport
             . ($this->loginRequired > 0 ? ", <fg=yellow>{$this->loginRequired} need login</>" : '')
             . " ({$this->checked} checked)\n"
         );
+    }
+
+    private function checkedAs(): string
+    {
+        $member = $this->login->getMember();
+
+        return (string) ($member->Email ?: $member->getName());
     }
 
     public function hasFailures(): bool

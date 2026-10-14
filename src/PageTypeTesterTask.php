@@ -2,6 +2,7 @@
 
 namespace PurpleSpider\PageTypeTester;
 
+use InvalidArgumentException;
 use PurpleSpider\PageTypeTester\Collector\AdminSectionCollector;
 use PurpleSpider\PageTypeTester\Collector\BlockTypeCollector;
 use PurpleSpider\PageTypeTester\Collector\PageTypeCollector;
@@ -96,6 +97,18 @@ class PageTypeTesterTask extends BuildTask
                 InputOption::VALUE_NONE,
                 'CLI only: print the results as JSON instead of the text report'
             ),
+            new InputOption(
+                'as',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'CLI only: email of the CMS user to check as. Defaults to the first admin.'
+            ),
+            new InputOption(
+                'no-login',
+                null,
+                InputOption::VALUE_NONE,
+                'CLI only: check without logging in to the CMS'
+            ),
         ];
     }
 
@@ -159,13 +172,41 @@ class PageTypeTesterTask extends BuildTask
 
     protected function execute(InputInterface $input, PolyOutput $output): int
     {
+        $checker = new UrlChecker($this->resolveVerifySsl($input));
+
+        // The browser report runs as whoever is logged in. The CLI logs in for the run,
+        // before anything is collected, as some of the report is built for the current
+        // user.
+        $login = null;
+        if (!$this->getHttpRequest() && !$input->getOption('no-login')) {
+            try {
+                $login = CliLogin::start((string) ($input->getOption('as') ?? ''));
+            } catch (InvalidArgumentException $e) {
+                $output->writeln('<error>' . OutputFormatter::escape($e->getMessage()) . '</error>');
+
+                return Command::INVALID;
+            }
+
+            if ($login) {
+                $checker->setCookies($login->getCookies());
+            }
+        }
+
+        try {
+            return $this->runChecks($input, $output, $checker, $login);
+        } finally {
+            $login?->end();
+        }
+    }
+
+    private function runChecks(InputInterface $input, PolyOutput $output, UrlChecker $checker, ?CliLogin $login): int
+    {
         $skipActions = (bool) $input->getOption('skip-actions');
         $skipAdmin = (bool) $input->getOption('skip-admin');
         $skipBlocks = (bool) $input->getOption('skip-blocks');
         $randomise = (bool) $input->getOption('randomise');
         $liveDomain = $this->sanitiseLiveDomain((string) ($input->getOption('live-domain') ?? ''));
 
-        $checker = new UrlChecker($this->resolveVerifySsl($input));
         $actionFinder = new ActionLinkFinder();
 
         // Shared, so a file reached from several types is only read once.
@@ -184,6 +225,7 @@ class PageTypeTesterTask extends BuildTask
 
         $cliReport = new CliReport($checker, $actionFinder, $skipActions);
         $cliReport->setQuiet($json);
+        $cliReport->setLogin($login);
         $cliReport->render($output, $rows, $blockRows, $adminSections, $skipAdmin);
 
         if ($json) {
