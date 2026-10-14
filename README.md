@@ -1,80 +1,47 @@
 # Check Page Type Statuses
 
-A Silverstripe BuildTask that provides a visual interface for testing all page types in your site. Useful for verifying pages work correctly after upgrades or major changes.
+A dev task that checks every page type on a Silverstripe site still works. I use it after upgrades: it picks an example page of each type and checks its CMS edit form, its frontend and its controller actions, then lets you tick each one off as you test it by hand.
 
 ![Check Page Type Statuses](docs/screenshot.png)
 
-## Features
-
-- Lists all page types with CMS edit and frontend links
-- Automatically checks HTTP status codes for all links
-- Detects and tests controller `$allowed_actions`
-- Fails pages that answer 200 but show PHP errors, debug output, unrendered template code or shortcodes, or have no title, and warns about broken links to the site itself
-- Checks each page's Settings and History screens in the CMS, showing them only when they fail
-- Checks the edit and add forms behind each GridField on a page's edit form, in a card per grid
-- Detects forms on pages (flags for manual testing)
-- Flags page types, block types and admin sections whose code sends email, and says where, so you know which forms to submit and which inboxes to check
-- With [Elemental](https://github.com/silverstripe/silverstripe-elemental) installed, checks one block of each block type: its summary in the CMS block list, its CMS edit form, and how it renders on its own. Also checks each page's block list along with its CMS edit form
-- "Create" buttons to add a test page for any page type, or a test block for any block type, that has none, and delete them again afterwards
-- Tick off each page type and admin section as you test it by hand, with a progress count and a filter to hide the ones already done
-- "Open All" buttons above each table, to open that table's CMS or frontend links in new tabs
-- Optional page preview thumbnails
-- Randomise selected pages for broader testing
-- Works in both browser and CLI
-
-## Requirements
-
-- Silverstripe 6.0+
-- PHP 8.1+
-
-## Installation
+## Install
 
 ```bash
 composer require purplespider/silverstripe-page-type-status-checker
 ```
 
-## Usage
+Needs Silverstripe 6 and PHP 8.1+.
 
-### Browser (recommended)
+## Use
 
-Visit `/dev/tasks/check-page-type-statuses` in your browser while logged in as admin. Checks start automatically.
+Visit `/dev/tasks/check-page-type-statuses` while logged in as an admin. The checks start on their own.
 
-### CLI
+Or from the command line:
 
 ```bash
 vendor/bin/sake tasks:check-page-type-statuses
 ```
 
-The CLI logs itself in to the CMS for the run, so it checks the same URLs as the browser report, CMS ones included, as the first admin on the site (or the member given with `--as`). It does this with Silverstripe's own "remember me" login: a login token that expires within the hour and is deleted when the run ends. With [session-manager](https://github.com/silverstripe/silverstripe-session-manager) installed, as it is with `recipe-cms`, the run shows in that member's list of sessions while it lasts. Their own logins elsewhere are not touched.
+The CLI logs itself in to the CMS as the first admin, so it checks everything the browser does. It uses Silverstripe's own "remember me" login, which expires within the hour and is deleted when the run finishes, and doesn't touch that admin's other logins. It exits non-zero if anything fails.
 
-The login is only valid on a site sharing this database. With `--base-url` pointing anywhere else, such as the live site, CMS URLs redirect to the login screen and are reported as needing login, and the summary says why. Use `--no-login` to check as an anonymous visitor.
+The login only works on a site that shares this database, so with `--base-url` pointing at live, the CMS links show as "login required".
 
-The command exits with a non-zero status if any check fails, so it can be used in a pipeline.
-
-### Options
-
-| Option | Description |
+| Option | |
 | --- | --- |
-| `--skip-actions` | Skip checking `allowed_actions` URLs |
-| `--skip-admin` | Skip ModelAdmin sections and SiteConfig |
-| `--skip-blocks` | Skip the Elemental block types |
-| `--randomise` | Pick a random example page per type instead of the first |
-| `--live-domain=URL` | Add "Live CMS" and "Live Page" comparison links, and a side-by-side Compare button |
-| `--verify-ssl=0\|1` | Verify TLS certificates. Defaults to off in dev mode, on elsewhere |
-| `--base-url=URL` | CLI only. Check against this URL instead of `SS_BASE_URL`, e.g. the local Herd URL when `SS_BASE_URL` points somewhere else |
-| `--json` | CLI only. Print the results as JSON instead of the text report (see below) |
-| `--as=EMAIL` | CLI only. Check as this CMS user rather than the first admin |
-| `--no-login` | CLI only. Check without logging in to the CMS |
+| `--skip-actions` | Don't check controller actions |
+| `--skip-admin` | Don't check ModelAdmins and Settings |
+| `--skip-blocks` | Don't check Elemental blocks |
+| `--randomise` | Pick a random example page of each type |
+| `--live-domain=URL` | Add links to the same pages on the live site, with a side-by-side Compare button |
+| `--verify-ssl=0\|1` | Off by default in dev mode |
+| `--base-url=URL` | CLI only. Check this URL instead of `SS_BASE_URL`, e.g. the local Herd URL |
+| `--json` | CLI only. Print the results as JSON |
+| `--as=EMAIL` | CLI only. Check as this CMS user instead of the first admin |
+| `--no-login` | CLI only. Check without logging in |
 
-All options except the CLI only ones also work as query string parameters in the browser.
+The ones that aren't CLI only work as query string parameters in the browser too.
 
-### JSON output
-
-```bash
-vendor/bin/sake tasks:check-page-type-statuses --base-url=https://example.test --json
-```
-
-prints a summary and every check, so a script can compare runs, e.g. before and after an upgrade:
+`--json` gives a summary and every check, handy for comparing runs before and after an upgrade:
 
 ```json
 {
@@ -82,7 +49,7 @@ prints a summary and every check, so a script can compare runs, e.g. before and 
     "cms": "Silverstripe 6.2.11",
     "base_url": "https://example.test",
     "checked_as": "admin@example.com",
-    "summary": { "checked": 29, "passed": 12, "failed": 0, "warnings": 0, "login_required": 17 },
+    "summary": { "checked": 29, "passed": 27, "failed": 1, "warnings": 1, "login_required": 0 },
     "checks": [
         { "subject": "NewsHolder", "label": "Action /rss", "url": "https://example.test/news/rss",
           "status": 200, "outcome": "pass", "problem": null, "redirect": null }
@@ -90,121 +57,48 @@ prints a summary and every check, so a script can compare runs, e.g. before and 
 }
 ```
 
-`outcome` is `pass`, `fail`, `warning` (works, but has a broken link on it), `login_required` (CMS URLs that redirected to the login screen, such as with `--no-login`) or `not_found` (an `allowed_actions` action with no link on the page). The exit status is the same as the text report's.
+`outcome` is `pass`, `fail`, `warning`, `login_required` or `not_found` (an action with no link to it on the page).
 
-## Configuration
+## What it checks
+
+- **Pages:** the CMS edit form, Settings and History, the frontend, and any `$allowed_actions` linked from the page. Also the edit and add forms behind each GridField on the edit form.
+- **Blocks** (with Elemental): one of each type, in the CMS block list, its edit form, and rendered on its own.
+- **Admin:** each ModelAdmin and Settings, plus an edit and add form for each model. Member and Group add forms need sudo mode, so the CLI skips them.
+
+A 200 isn't automatically a pass. A page still fails if it shows a PHP error, debug output, unrendered template code or a raw shortcode, or has no title. Links that are broken in the way Silverstripe 6 tends to break them (`https://example.comSecurity/logout`) get an orange warning.
+
+Redirects aren't followed, so a page that quietly redirects somewhere else shows up. Pages that only exist in draft are checked with `?stage=Stage`.
+
+It also flags any page type, block or admin whose code sends email, so you know which forms to submit and which inboxes to watch. It does this by reading the code, so nothing is actually sent.
+
+## Other handy bits
+
+- **Create** buttons add a draft test page or block for types that don't have one, and delete them again afterwards.
+- **Tested** ticks are stored in your browser's local storage, so they survive pulling down a fresh copy of the live database. They aren't shared with anyone else.
+- **Open All** opens every CMS or frontend link in a table in new tabs.
+
+## Config
 
 ```yaml
-PurpleSpider\PageTypeTester\ActionLinkFinder:
-  # Actions that resolve without an ID, so a URL can be built even when the page
-  # contains no link to them.
-  direct_actions:
-    - rss
-
 PurpleSpider\PageTypeTester\Report\HtmlReport:
-  # How many checks the browser runs at once. Lower this for slow or rate-limited sites.
-  check_concurrency: 6
+  check_concurrency: 6 # lower this for slow sites
 
-PurpleSpider\PageTypeTester\EmailUsageFinder:
-  # Classes whose use counts as sending email, subclasses included. Add a third-party
-  # mail client here if the site sends through one directly.
-  mail_classes:
-    - SilverStripe\Control\Email\Email
-    - Symfony\Component\Mailer\MailerInterface
-  # Global functions that send email.
-  mail_functions:
-    - mail
-  # How many classes deep to follow from a type's own code into the site's other classes.
-  reference_depth: 2
+PurpleSpider\PageTypeTester\ActionLinkFinder:
+  direct_actions: # actions to check even with no link on the page
+    - rss
 ```
 
-## How it decides what passed
+`EmailUsageFinder` has `mail_classes`, `mail_functions` and `reference_depth` if you need to teach it about another mail library.
 
-- Redirects are **not** followed. A page that redirects is reported with its own status rather than the status of wherever it points, so a page silently redirecting to the home page shows as a failure rather than a pass. The CLI and browser reports agree on this.
-- `ErrorPage` is expected to return 404 or 500, `RedirectorPage` a 3xx, and everything else a 200.
-- A page type whose only pages are in draft, including a page the report created, is checked on the draft stage (`?stage=Stage`), along with its actions. Its live URL would be a 404, which hides whatever the draft really does, such as a 500. The draft stage needs a CMS login, so without one, as with `--no-login`, it is reported as needing login rather than failed.
-- A 200 is not always a pass. A page also fails if it shows PHP error output (Silverstripe's error view, PHP's own, or `Debug::message()`/`Debug::show()` left in the code), unrendered template code (`<% if %>`, `{$Title}`), an unparsed shortcode (`[sitetree_link,id=5]`), has no or an empty `<title>`, or stops before `</html>`. Actions and blocks are searched for the same error output and code.
-- A 200 gets an orange warning, rather than failing, where a link, image or form runs the site's own address straight into a path (`https://example.comSecurity/logout`, from joining Silverstripe 6's `$AbsoluteBaseURL`, which no longer ends in a slash, to a path), or a link's text is an address with a different scheme from the link (text `http://...`, going to `https://...`). The page works, but the link does not. Actions and blocks are searched for the same links. Warnings are counted separately, and do not fail the CLI run. A bare `$Title` is not flagged, as it also matches prices and copy. In dev mode most PHP warnings already answer 500, so this mainly catches what still gets through as a 200.
-- Each page's Settings and History screens in the CMS (`admin/pages/settings/show/{id}`, `admin/pages/history/show/{id}`) are checked along with its edit form. History is also checked through the request that loads its list of versions, as the screen itself answers 200 either way. They are only shown when they fail, as a small badge under the edit form's status.
-- Each GridField on a page's edit form, such as a `has_many` that Silverstripe 6 scaffolds into its own tab, gets a card under the edit form's status, laid out like the frontend actions: status, then the form, then the class it was built for. The card checks the edit form of one record of each class the grid lists, as each class builds its own fields, and the grid's add form if it has an Add button the current user can use. The cards are folded away under one line giving a single status for all of them, such as `200 3 GridFields`, and open by themselves when any form fails. The edit form answers 200 however broken these are, as the grid only lists its records, and the add form builds `getCMSFields()` for an unsaved record, which is where code that assumes a saved one falls over. The links come from the page's real edit form, so they are only found for a logged-in user, which the CLI is unless run with `--no-login`. Elemental's block area is left out, as its block list is already checked.
-- Admin sections check the edit form of one record of each model, and, where the section has an Add button that you can use, the form for a new record. Models that need sudo mode, such as Member and Group, only have an Add button while sudo mode is active, so their add forms are only checked then, and never by the CLI, whose login does not start sudo mode.
-- An action URL is only matched when it sits beneath the page's own URL. Links elsewhere on the page (navigation, footer) are ignored, since those belong to other page types.
-- Where no link to an action is found, it is reported as needing a manual check rather than passed or failed.
-- An action that is a form on the page (the form's id is `Form_{Action}`, or it submits to `.../{Action}`) is shown once, as a "form action" linking to the form, rather than as a separate action to check. `index` is never listed, as it is the page itself.
-- On a page with Elemental blocks, the CMS check also requests each of the page's block lists (`admin/elemental-area/api/readElements/{id}`). The edit form itself answers 200 even when its blocks editor cannot load, because the block list is fetched afterwards, so a block that fails there would otherwise go unnoticed.
+## Live CMS links keep asking me to log in
 
-### Blocks
-
-Each block type is checked through one example block, preferring a published one that sits on a page. All three checks expect a 200.
-
-- **CMS Summary** builds the block's entry in its page's CMS block list, making the same calls the CMS makes, including the block's `getSummary()`, which is what usually fails. A block that throws here stops the whole block list loading. Elemental has no URL that lists a single block, so the task answers this itself. A failure shows the exception message.
-- **CMS Edit Form** requests the block's standalone edit form (`getCMSEditLink(true)`), as opposed to the inline one in the blocks editor.
-- **Frontend** renders the block on its own, through the task, with its page set up as the current page. Elemental's own `/element/{id}` route answers 200 without rendering the block, so it cannot be used. Rendering errors are left to Silverstripe's error handling, so a broken block answers with a real 500, and opening the link in dev mode shows the full error.
-
-The CMS checks, and the frontend of a page or block that is only in draft, need a CMS login. Like the rest of the task these URLs are open to anyone in dev mode and need ADMIN elsewhere, and they read nothing in draft without CMS access.
-
-## Code that sends email
-
-A page can answer 200 while the email its form sends never arrives, and after an upgrade that is one of the first things to break, especially one past Silverstripe 5, which replaced SwiftMailer with Symfony Mailer and its config. So each page type, block type and admin section whose code sends email lists where, as an **email** entry in the same list as its actions and forms, labelled with the method that sends it. Hovering or tabbing to the badge shows the class, file and line, what it sends with, and how it was reached. Block types show the list under their frontend link. In admin sections, a record's usages sit beside its edit form, where saving one would be tested, and the admin's own under its section link. The CLI prints the same beneath each type.
-
-This reads the source rather than running it, so nothing is sent to find out. It counts as sending email:
-
-- creating an `Email` or a subclass of it (`Email::create()`, `new Email()`, `Injector::inst()->create(Email::class)`), or taking one as a parameter, as an `updateEmail()` hook does
-- using Symfony's `MailerInterface`
-- calling `mail()`
-
-Static helpers such as `Email::is_valid_address()` do not count.
-
-What is read for each type:
-
-- **Page types:** the page class and its controller, and their parents up to `Page` and `PageController`. A type extending `UserDefinedForm` is flagged through `UserDefinedFormController`, but a form every page has through `PageController`, such as a newsletter signup in the footer, is flagged once, on `Page`, rather than on every type
-- **Block types:** the block class and its `controller_class`, up to `BaseElement` and `ElementController`
-- **Admin sections:** the `ModelAdmin`, and separately each class it manages, such as a DataObject that sends a notification in `onAfterWrite()`. A managed class with no record to link to is listed by name in the Edit Form column. Settings reads `SiteConfig`
-- extensions applied directly to any of those classes, and traits they use
-
-From there it follows the other classes that code uses, such as a form class the controller builds or a notification service the form calls, up to two classes deep (`reference_depth`). These show as "via ContactPageController > EnquiryForm". Only the site's own code is followed, not `vendor`, or everything that touches `Member` would be flagged.
-
-It shows where email could be sent, not that it is: a UserDefinedForm is flagged whether or not any recipients are set up in the CMS. Code it cannot see, such as a call made through a string or a closure passed in from elsewhere, is missed.
-
-## Comparing against the live site
-
-Setting a live domain adds a "Live CMS" and "Live Page" link beside each page type's local links, and a "Live CMS" link beside each block type's edit form, with a **Compare** button after each pair. The live links reuse the local record IDs, so they are only right when the local database is a copy of live. Compare opens the local and live version of the same thing in two windows, side by side, half the screen each.
-
-### Why do the live CMS links ask me to log in? (Silverstripe 6+)
-
-If the LIVE site is on Silverstripe 6, and you add it's URL for previewing, you may keep getting asked to login every time you click a "Live CMS" link. This is because starting in Silverstripe 6, the default value of `Session.cookie_samesite` changed from `Lax` to `Strict`, which tells the browser to withhold the login cookie on any navigation *initiated by another site*.
-
-To fix it, set the pre-6.0 behaviour on the site being linked to:
+Silverstripe 6 changed the session cookie to `SameSite=Strict`, so the browser drops your login when you arrive from another site. Either log in when it asks (you'll be sent back to the right page), or put the old behaviour back on the live site:
 
 ```yaml
 SilverStripe\Control\Session:
   cookie_samesite: 'Lax'
 ```
 
-Lax still sends the session cookie on top-level cross-site GET navigations, which is the link-click case, while withholding it on cross-site POSTs and subresource loads. It was Silverstripe's own default until 6.0, and state-changing requests are protected by `SecurityToken` regardless. There is no middle setting: SameSite has no per-origin allowlist, and `None` is weaker still.
-
-Otherwise, just log in when you land there - the redirect carries a `BackURL`, so you end up on the page you clicked for. Live frontend links are unaffected.
-
-## Tracking what you have tested
-
-The status checks only prove a page responds. Each page type, block type and admin section also has a **Tested** checkbox for marking it once you have been through it by hand. Each table shows how many are done and has its own **Hide Tested** button, which leaves only the ones still to do. Hovering the date under a tick shows exactly when it was ticked.
-
-Ticks are per page type rather than per page, so they survive Randomise picking a different example. Types with no pages can be ticked too, for example once you have created one and checked it, or decided the type is unused. They are stored in your browser's local storage, which means:
-
-- nothing to install and no database table
-- they survive logging out, and pulling a fresh copy of the live database midway through testing
-- they belong to that browser only, so they are not shared with colleagues or between browsers
-
-Use a table's **Clear** button to start that table again, for example before the next upgrade.
-
-## Creating and deleting pages
-
-Page types with no instances get a "Create" button, so a type can be checked without hand-building a page in the CMS. 
-
-Block types with no blocks on a page get one too. A block has to sit on a page, and adding one to an existing page would change real content, so this creates a draft test page to hold it: the most used page type that allows that block. Both stay in draft.
-
-Deleting archives the page, along with any blocks on it. Elemental does not do this itself, so without it a deleted page would leave its blocks behind.
-
-## License
+## Licence
 
 BSD-3-Clause
