@@ -24,7 +24,8 @@ use SilverStripe\Security\Security;
  * Uses Silverstripe's own "remember me" login rather than anything of this module's: a
  * RememberLoginHash, sent as the alc_enc and alc_device cookies, which core's
  * CookieAuthenticationHandler accepts on any request and turns into a normal session.
- * It is made to expire within the hour and deleted when the run ends. Anybody who can
+ * It is deleted when the run ends, and a run that was killed has its login removed by the
+ * next one (see removeLeftovers()); its expiry allows for the web server's timezone. Anybody who can
  * run the CLI can already write to the database, so this gives them nothing new.
  */
 class CliLogin
@@ -33,6 +34,19 @@ class CliLogin
      * How long the login lasts if the run is killed before it can be removed.
      */
     private const EXPIRY_MINUTES = 60;
+
+    /**
+     * How far ahead of the CLI's timezone a web server's can be. The expiry is stored as a
+     * local time with no timezone, and the web server reads it in its own: with Herd's CLI on
+     * UTC and its web PHP on Europe/London, a 60-minute login was already expired when the
+     * site read it, and only worked if the first check landed in the same second. So the
+     * expiry is pushed out by this much, which gives at least the hour on any server, and
+     * the login is still removed when the run ends.
+     */
+    private const CLOCK_SKEW_HOURS = 14;
+
+    /** A login of this module's older than this is left over from a killed run. */
+    private const LEFTOVER_HOURS = 2;
 
     /**
      * silverstripe/session-manager, part of recipe-cms, logs out any login that is not
@@ -63,13 +77,16 @@ class CliLogin
             return null;
         }
 
+        static::removeLeftovers();
+
         $hash = RememberLoginHash::generate($member);
         if (!$hash) {
             return null;
         }
 
         // generate() gives it the site's usual lifetime, 30 days by default.
-        $hash->ExpiryDate = date('Y-m-d H:i:s', DBDatetime::now()->getTimestamp() + self::EXPIRY_MINUTES * 60);
+        $seconds = self::EXPIRY_MINUTES * 60 + self::CLOCK_SKEW_HOURS * 3600;
+        $hash->ExpiryDate = date('Y-m-d H:i:s', DBDatetime::now()->getTimestamp() + $seconds);
         static::addLoginSession($hash, $member);
         $hash->write();
 
@@ -121,6 +138,29 @@ class CliLogin
         $hash?->delete();
 
         Security::setCurrentUser(null);
+    }
+
+    /**
+     * Removes logins this module left behind when a run was killed before it could clean
+     * up. They are recognised by the checker's user agent on their session-manager
+     * LoginSession, so a member's own logins are never touched. Without session-manager
+     * there's no way to tell them apart, and they expire on their own.
+     */
+    private static function removeLeftovers(): void
+    {
+        if (!class_exists(self::LOGIN_SESSION_CLASS)) {
+            return;
+        }
+
+        $before = date('Y-m-d H:i:s', DBDatetime::now()->getTimestamp() - self::LEFTOVER_HOURS * 3600);
+        $sessions = DataObject::get(self::LOGIN_SESSION_CLASS)->filter([
+            'UserAgent' => UrlChecker::USER_AGENT,
+            'Created:LessThan' => $before,
+        ]);
+        foreach ($sessions as $session) {
+            RememberLoginHash::get()->filter('LoginSessionID', $session->ID)->removeAll();
+            $session->delete();
+        }
     }
 
     /**

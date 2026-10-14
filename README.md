@@ -22,7 +22,7 @@ Or from the command line:
 vendor/bin/sake tasks:check-page-type-statuses
 ```
 
-The CLI logs itself in to the CMS as the first admin, so it checks everything the browser does. It uses Silverstripe's own "remember me" login, which expires within the hour and is deleted when the run finishes, and doesn't touch that admin's other logins. It exits non-zero if anything fails.
+The CLI logs itself in to the CMS as the first admin, so it checks everything the browser does. It uses Silverstripe's own "remember me" login, which is deleted when the run finishes (or by the next run, if one was killed), and doesn't touch that admin's other logins. Its expiry allows for the web server running in a different timezone from the CLI, as Herd's do. It exits non-zero if anything fails.
 
 The login only works on a site that shares this database, so with `--base-url` pointing at live, the CMS links show as "login required".
 
