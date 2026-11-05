@@ -553,6 +553,14 @@ class HtmlReport
     }
 
     /**
+     * Where a local absolute URL lives on the live site, for joining to the live domain.
+     */
+    private function livePath(string $url): string
+    {
+        return '/' . ltrim(Director::makeRelative($url), '/');
+    }
+
+    /**
      * Sits inline after the page name, small enough not to compete with it. The tooltip
      * says what deleting does; the label alone would not.
      */
@@ -722,7 +730,7 @@ class HtmlReport
         $liveLink = '';
         $compare = '';
         if ($hasLive) {
-            $livePath = '/' . ltrim(Director::makeRelative($row->editFormUrl), '/');
+            $livePath = $this->livePath($row->editFormUrl);
 
             $liveLink = $this->liveLink(
                 $livePath,
@@ -926,11 +934,7 @@ class HtmlReport
                 . $this->testedCell('admin:' . Director::makeRelative($section->url), $section->name)
                 . "<td><strong>{$name}</strong></td>"
                 . "<td><span class='ptl-type'>" . $this->esc($section->type) . "</span></td>"
-                . "<td><span id='admin-status-{$section->index}' class='ptl-status'>"
-                . "<span class='ptl-status-placeholder'>?</span></span>"
-                . "<a href='" . $this->esc($section->url) . "' target='_blank' rel='noopener' class='ptl-cms'>"
-                . "View<span class='ptl-sr-only'> {$name}</span></a>"
-                . $this->emailList($section->emailUsages) . "</td>"
+                . "<td>" . $this->adminSectionCell($section) . $this->emailList($section->emailUsages) . "</td>"
                 . "<td>{$editCell}</td>"
                 . "</tr>";
         }
@@ -939,6 +943,28 @@ class HtmlReport
             . $this->testedTools('ptl-admin-sections', 'admin sections');
 
         return $this->tablePanel('ptl-admin-sections', 'Admin Sections', $tools, $html . "</tbody></table>");
+    }
+
+    /**
+     * The section's own screen, with live and Compare links when a live domain is set.
+     */
+    private function adminSectionCell(AdminSection $section): string
+    {
+        $livePath = $this->livePath($section->url);
+
+        return $this->linkCell(
+            $this->statusPlaceholder("admin-status-{$section->index}"),
+            $this->cellLink(
+                $section->url,
+                'View',
+                $section->name,
+                'ptl-cms',
+                'desktop',
+                ['This CMS', "view {$section->name} on this site"]
+            ),
+            $this->liveLink($livePath, 'Live CMS', "view {$section->name} on the live site", 'ptl-cms'),
+            $this->compareButton($section->url, $livePath, $section->name . ' in the CMS')
+        );
     }
 
     /**
@@ -1030,7 +1056,7 @@ class HtmlReport
         return "<div class='ptl-live-domain-section'>"
             . "<h2>Compare with Live Site</h2>"
             . "<p>Enter the live site URL to add \"Live CMS\" and \"Live Page\" links for each page type, "
-            . "and a \"Live CMS\" link for each block's edit form, for comparing an upgraded local or staging site against production. These links are not checked.</p>"
+            . "and a \"Live CMS\" link for each block's edit form and admin section, for comparing an upgraded local or staging site against production. These links are not checked.</p>"
             . "<form class='ptl-live-domain-form' method='get' action='" . $this->esc($this->taskUrl()) . "'>"
             . $this->carriedQueryInputs()
             . "<div class='ptl-field'>"
