@@ -635,7 +635,7 @@ p.ptl-desc {
     gap: 4px 10px;
 }
 
-/* Spacing comes from the flex gaps here. The margins are for the admin table. */
+/* Spacing comes from the flex gaps here. */
 .ptl-link-cell .ptl-status {
     margin-right: 0;
 }
@@ -1426,6 +1426,10 @@ button.ptl-status-login {
 
 .ptl-edit-item .ptl-status {
     margin-right: 0;
+}
+
+.ptl-edit-item .ptl-compare-btn {
+    margin-left: 0;
 }
 
 .ptl-edit-none {

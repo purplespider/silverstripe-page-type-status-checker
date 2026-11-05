@@ -1009,7 +1009,18 @@ class HtmlReport
         foreach ($rows as $row) {
             $edit = '<span></span>';
             if ($row['edit']) {
-                $edit = $this->adminEditItem($row['edit'], "class='ptl-cms'", $this->esc($row['edit']->recordTitle));
+                // As with blocks, this assumes the live site has the same record IDs. An add
+                // form has no record to differ, so only the edit form gets a Compare.
+                $edit = $this->adminEditItem(
+                    $row['edit'],
+                    "class='ptl-cms'",
+                    $this->esc($row['edit']->recordTitle),
+                    $this->compareButton(
+                        $row['edit']->url,
+                        $this->livePath($row['edit']->url),
+                        $row['model'] . ' ' . $row['edit']->recordTitle . ' in the CMS'
+                    )
+                );
             } elseif ($row['new']) {
                 $edit = "<span class='ptl-edit-none'>No records</span>";
             }
@@ -1034,11 +1045,15 @@ class HtmlReport
         return "<div class='ptl-edit-grid' style='--ptl-edit-columns: {$columns}'>{$html}</div>";
     }
 
-    private function adminEditItem(AdminEditLink $link, string $class, string $label): string
+    private function adminEditItem(AdminEditLink $link, string $class, string $label, string $compare = ''): string
     {
+        $compareCell = $compare === ''
+            ? ''
+            : "<span class='ptl-compare-wrap ptl-when-comparing'>{$compare}</span>";
+
         return "<span class='ptl-edit-item'>"
             . $this->statusPlaceholder("admin-edit-status-{$link->index}")
-            . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' {$class}>{$label}</a></span>";
+            . "<a href='" . $this->esc($link->url) . "' target='_blank' rel='noopener' {$class}>{$label}</a>{$compareCell}</span>";
     }
 
     /**
